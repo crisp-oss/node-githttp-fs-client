@@ -1,0 +1,35 @@
+{
+  "name": "flavio-client",
+  "description": "Flavio client for Node. Used in pair with Flavio, a git-backed content management database served over HTTP.",
+  "version": "1.0.0",
+  "type": "module",
+  "homepage": "https://github.com/crisp-oss/node-flavio-client",
+  "license": "MIT",
+  "author": {
+    "name": "Valerian Saliou",
+    "email": "valerian@valeriansaliou.name",
+    "url": "https://valeriansaliou.name/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/crisp-oss/node-flavio-client.git"
+  },
+  "bugs": {
+    "url": "https://github.com/crisp-oss/node-flavio-client/issues"
+  },
+  "licenses": [
+    {
+      "type": "MIT",
+      "url": "https://github.com/crisp-oss/node-flavio-client/blob/master/LICENSE"
+    }
+  ],
+  "main": "lib/index.ts",
+  "engines": {
+    "node": ">= 23.0.0"
+  },
+  "keywords": [
+    "flavio",
+    "git",
+    "cms"
+  ]
+}
