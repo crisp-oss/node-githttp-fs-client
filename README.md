@@ -1,5 +1,7 @@
 # node-githttp-fs-client
 
+[![Build and Release](https://github.com/crisp-oss/node-githttp-fs-client/workflows/Build%20and%20Release/badge.svg)](https://github.com/crisp-oss/node-githttp-fs-client/actions?query=workflow%3A%22Build+and+Release%22) [![NPM](https://img.shields.io/npm/v/githttp-fs-client.svg)](https://www.npmjs.com/package/githttp-fs-client) [![Downloads](https://img.shields.io/npm/dt/githttp-fs-client.svg)](https://www.npmjs.com/package/githttp-fs-client)
+
 **Git HTTP FS client for Node. Used in pair with Git HTTP FS, a git-backed content management database served over HTTP.**
 
 Git HTTP FS Client is used to manage per-tenant Git content databases, over the Git HTTP FS HTTP API. All operations supported by the Git HTTP FS HTTP API are also supported in this client.
