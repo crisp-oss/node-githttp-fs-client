@@ -1,9 +1,9 @@
 {
-  "name": "flavio-client",
-  "description": "Flavio client for Node. Used in pair with Flavio, a git-backed content management database served over HTTP.",
+  "name": "githttp-fs-client",
+  "description": "Git HTTP FS client for Node. Used in pair with Git HTTP FS, a git-backed content management database served over HTTP.",
   "version": "1.0.0",
   "type": "module",
-  "homepage": "https://github.com/crisp-oss/node-flavio-client",
+  "homepage": "https://github.com/crisp-oss/node-githttp-fs-client",
   "license": "MIT",
   "author": {
     "name": "Valerian Saliou",
@@ -12,15 +12,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/crisp-oss/node-flavio-client.git"
+    "url": "git://github.com/crisp-oss/node-githttp-fs-client.git"
   },
   "bugs": {
-    "url": "https://github.com/crisp-oss/node-flavio-client/issues"
+    "url": "https://github.com/crisp-oss/node-githttp-fs-client/issues"
   },
   "licenses": [
     {
       "type": "MIT",
-      "url": "https://github.com/crisp-oss/node-flavio-client/blob/master/LICENSE"
+      "url": "https://github.com/crisp-oss/node-githttp-fs-client/blob/master/LICENSE"
     }
   ],
   "main": "lib/index.ts",
@@ -28,7 +28,7 @@
     "node": ">= 23.0.0"
   },
   "keywords": [
-    "flavio",
+    "githttp-fs",
     "git",
     "cms"
   ]

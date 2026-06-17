@@ -1,12 +1,12 @@
 /*
- * node-flavio-client
+ * node-githttp-fs-client
  *
  * Copyright 2026, Valerian Saliou
  * Author: Valerian Saliou <valerian@valeriansaliou.name>
  */
 
 /**
- * Configuration for the Flavio API client.
+ * Configuration for the Git HTTP FS API client.
  */
 export interface ClientConfig {
   baseUrl: string;
@@ -23,9 +23,9 @@ const PUT = "PUT";
 const DELETE = "DELETE";
 
 /**
- * Flavio client, manages files and commits over the Flavio HTTP API.
+ * Git HTTP FS client, manages files and commits over the Git HTTP FS HTTP API.
  */
-export class FlavioClient {
+export class GitHTTPFSClient {
   private baseUrl: string;
   private headers: Record<string, string>;
 
