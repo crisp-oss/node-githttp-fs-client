@@ -14,6 +14,14 @@ export interface ClientConfig {
 }
 
 /**
+ * Common types
+ */
+export interface CommitAuthor {
+  email: string;
+  name: string;
+}
+
+/**
  * Types for listFiles()
  */
 export interface FileListFile {
@@ -39,15 +47,28 @@ export interface FileContent {
 }
 
 /**
- * Types for listCommits()
+ * Types for writeFile()
  */
-export interface CommitListAuthor {
-  email: string;
-  name: string;
+export interface FileWritePayload {
+  author: CommitAuthor;
+  content: string;
+  message?: string;
 }
 
+/**
+ * Types for moveFile()
+ */
+export interface FileMovePayload {
+  author: CommitAuthor;
+  destination: string;
+  message?: string;
+}
+
+/**
+ * Types for listCommits()
+ */
 export interface CommitListCommit {
-  author: CommitListAuthor;
+  author: CommitAuthor;
   committed_at: string;
   message: string;
   sha: string;
@@ -73,9 +94,17 @@ export interface CommitDetailFile {
 export interface CommitDetail {
   sha: string;
   message: string;
-  author: CommitListAuthor;
+  author: CommitAuthor;
   committed_at: string;
   files: Array<CommitDetailFile>;
+}
+
+/**
+ * Types for revertCommit()
+ */
+export interface CommitRevertPayload {
+  author: CommitAuthor;
+  message: string;
 }
 
 /** Defines the API version */
@@ -111,7 +140,7 @@ export class GitHTTPFSClient {
   private async request<T>(
     path: string,
     method: "GET" | "POST" | "PUT" | "DELETE",
-    body?: any,
+    payload?: any,
     params?: Record<string, string>
   ): Promise<T> {
     const url = new URL(`${this.baseUrl}/${VERSION}/${path}`);
@@ -129,8 +158,8 @@ export class GitHTTPFSClient {
       headers: this.headers
     };
 
-    if (body && method !== GET) {
-      options.body = JSON.stringify(body);
+    if (payload && method !== GET) {
+      options.body = JSON.stringify(payload);
     }
 
     const response = await fetch(url.toString(), options);
@@ -168,9 +197,9 @@ export class GitHTTPFSClient {
   }
 
   /** Create or update a file */
-  async putFile(collectionId: string, tenantId: string, path: string, body: any): Promise<void> {
+  async writeFile(collectionId: string, tenantId: string, path: string, payload: FileWritePayload): Promise<void> {
     return this.request(
-      `${collectionId}/${tenantId}/files/${path}`, PUT, body
+      `${collectionId}/${tenantId}/files/${path}`, PUT, payload
     );
   }
 
@@ -182,9 +211,9 @@ export class GitHTTPFSClient {
   }
 
   /** Move / rename a file */
-  async moveFile(collectionId: string, tenantId: string, path: string, body: any): Promise<void> {
+  async moveFile(collectionId: string, tenantId: string, path: string, payload: FileMovePayload): Promise<void> {
     return this.request(
-      `${collectionId}/${tenantId}/files/${path}/move`, POST, body
+      `${collectionId}/${tenantId}/files/${path}/move`, POST, payload
     );
   }
 
@@ -215,9 +244,9 @@ export class GitHTTPFSClient {
   }
 
   /** Revert a commit */
-  async revertCommit(collectionId: string, tenantId: string, sha: string, body: any): Promise<void> {
+  async revertCommit(collectionId: string, tenantId: string, sha: string, payload: CommitRevertPayload): Promise<void> {
     return this.request(
-      `${collectionId}/${tenantId}/commits/${sha}/revert`, POST, body
+      `${collectionId}/${tenantId}/commits/${sha}/revert`, POST, payload
     );
   }
 }
