@@ -57,6 +57,7 @@ export interface CommitList {
   commits: Array<CommitListCommit>;
   page: number;
   per_page: number;
+  has_more: boolean;
 }
 
 /**
