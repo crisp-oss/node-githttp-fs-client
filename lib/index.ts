@@ -104,7 +104,7 @@ export interface CommitDetail {
  */
 export interface CommitRevertPayload {
   author: CommitAuthor;
-  message: string;
+  message?: string;
 }
 
 /** Defines the API version */
