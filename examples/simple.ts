@@ -12,17 +12,18 @@ const client = new GitHTTPFSClient({
   apiKey: "MySecretAPIKey"
 });
 
+const COLLECTION_ID = "my-collection";
 const TENANT_ID = "4ffb599d-4115-42b4-a568-5537ce97f56c";
 const FILE_PATH = "guides/index.md";
 
 try {
   // List files for tenant
-  const files = await client.listFiles(TENANT_ID);
+  const files = await client.listFiles(COLLECTION_ID, TENANT_ID);
 
   console.log("Listed files:", files);
 
   // Get a specific file
-  const content = await client.getFileContent(TENANT_ID, FILE_PATH);
+  const content = await client.getFileContent(COLLECTION_ID, TENANT_ID, FILE_PATH);
 
   console.log("Got content:", content);
 } catch (error) {

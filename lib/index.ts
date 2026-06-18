@@ -13,6 +13,70 @@ export interface ClientConfig {
   apiKey: string;
 }
 
+/**
+ * Types for listFiles()
+ */
+export interface FileListFile {
+  name: string;
+  size: number;
+  type: "file";
+}
+
+export interface FileListDirectory {
+  name: string;
+  children: Array<FileList>;
+  type: "directory";
+}
+
+export type FileList = FileListFile | FileListDirectory;
+
+/**
+ * Types for getFileContent()
+ */
+export interface FileContent {
+  content: string;
+  path: string;
+}
+
+/**
+ * Types for listCommits()
+ */
+export interface CommitListAuthor {
+  email: string;
+  name: string;
+}
+
+export interface CommitListCommit {
+  author: CommitListAuthor;
+  committed_at: string;
+  message: string;
+  sha: string;
+}
+
+export interface CommitList {
+  commits: Array<CommitListCommit>;
+  page: number;
+  per_page: number;
+}
+
+/**
+ * Types for getCommitDetail()
+ */
+export interface CommitDetailFile {
+  path: string;
+  change: string;
+  content: string;
+  diff: string;
+}
+
+export interface CommitDetail {
+  sha: string;
+  message: string;
+  author: CommitListAuthor;
+  committed_at: string;
+  files: Array<CommitDetailFile>;
+}
+
 /** Defines the API version */
 const VERSION = "v1";
 
@@ -82,44 +146,44 @@ export class GitHTTPFSClient {
   // --- Tenant Operations ---
 
   /** Delete entire tenant repository */
-  async deleteTenant(tenantId: string) {
+  async deleteTenant(collectionId: string, tenantId: string): Promise<void> {
     return this.request(
-      `${tenantId}`, DELETE
+      `${collectionId}/${tenantId}`, DELETE
     );
   }
 
   /** List all tracked files (path + size) */
-  async listFiles(tenantId: string) {
+  async listFiles(collectionId: string, tenantId: string): Promise<Array<FileList>> {
     return this.request(
-      `${tenantId}/files`, GET
+      `${collectionId}/${tenantId}/files`, GET
     );
   }
 
   /** Read file content */
-  async getFileContent(tenantId: string, path: string) {
+  async getFileContent(collectionId: string, tenantId: string, path: string): Promise<FileContent> {
     return this.request(
-      `${tenantId}/files/${path}`, GET
+      `${collectionId}/${tenantId}/files/${path}`, GET
     );
   }
 
   /** Create or update a file */
-  async putFile(tenantId: string, path: string, body: any) {
+  async putFile(collectionId: string, tenantId: string, path: string, body: any): Promise<void> {
     return this.request(
-      `${tenantId}/files/${path}`, PUT, body
+      `${collectionId}/${tenantId}/files/${path}`, PUT, body
     );
   }
 
   /** Delete a file */
-  async deleteFile(tenantId: string, path: string) {
+  async deleteFile(collectionId: string, tenantId: string, path: string): Promise<void> {
     return this.request(
-      `${tenantId}/files/${path}`, DELETE
+      `${collectionId}/${tenantId}/files/${path}`, DELETE
     );
   }
 
   /** Move / rename a file */
-  async moveFile(tenantId: string, path: string, body: any) {
+  async moveFile(collectionId: string, tenantId: string, path: string, body: any): Promise<void> {
     return this.request(
-      `${tenantId}/files/${path}/move`, POST, body
+      `${collectionId}/${tenantId}/files/${path}/move`, POST, body
     );
   }
 
@@ -127,31 +191,32 @@ export class GitHTTPFSClient {
 
   /** List commits with pagination */
   async listCommits(
+    collectionId: string,
     tenantId: string,
     page: number = 1,
     perPage: number = 100
-  ) {
+  ): Promise<CommitList> {
     const params = {
       page: page.toString(),
       per_page: Math.min(perPage, 500).toString()
     };
 
     return this.request(
-      `${tenantId}/commits`, GET, undefined, params
+      `${collectionId}/${tenantId}/commits`, GET, undefined, params
     );
   }
 
   /** Commit detail with per-file diffs and snapshots */
-  async getCommitDetail(tenantId: string, sha: string) {
+  async getCommitDetail(collectionId: string, tenantId: string, sha: string): Promise<CommitDetail> {
     return this.request(
-      `${tenantId}/commits/${sha}`, GET
+      `${collectionId}/${tenantId}/commits/${sha}`, GET
     );
   }
 
   /** Revert a commit */
-  async revertCommit(tenantId: string, sha: string, body: any) {
+  async revertCommit(collectionId: string, tenantId: string, sha: string, body: any): Promise<void> {
     return this.request(
-      `${tenantId}/commits/${sha}/revert`, POST, body
+      `${collectionId}/${tenantId}/commits/${sha}/revert`, POST, body
     );
   }
 }

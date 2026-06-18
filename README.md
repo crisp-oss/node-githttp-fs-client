@@ -26,7 +26,7 @@ const client = new GitHTTPFSClient({
   apiKey: "MySecretAPIKey"
 });
 
-const files = await client.listFiles("<your_tenant_id_here>");
+const files = await client.listFiles("<collection_id>", "<tenant_id>");
 
 console.log("Listed files:", files);
 ```
