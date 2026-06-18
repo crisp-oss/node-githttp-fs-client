@@ -23,13 +23,24 @@
       "url": "https://github.com/crisp-oss/node-githttp-fs-client/blob/master/LICENSE"
     }
   ],
-  "main": "lib/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
   "engines": {
-    "node": ">= 23.0.0"
+    "node": ">= 18.0.0"
   },
   "keywords": [
     "githttp-fs",
     "git",
     "cms"
-  ]
+  ],
+  "devDependencies": {
+    "typescript": "5.8.3"
+  }
 }
