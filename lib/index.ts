@@ -183,9 +183,13 @@ export class GitHTTPFSClient {
   }
 
   /** List all tracked files (path + size) */
-  async listFiles(collectionId: string, tenantId: string): Promise<Array<FileList>> {
+  async listFiles(collectionId: string, tenantId: string, prefixPath?: string): Promise<Array<FileList>> {
+    const params = {
+      prefix_path: prefixPath || ""
+    };
+
     return this.request(
-      `${collectionId}/${tenantId}/files`, GET
+      `${collectionId}/${tenantId}/files`, GET, undefined, params
     );
   }
 
@@ -224,11 +228,13 @@ export class GitHTTPFSClient {
     collectionId: string,
     tenantId: string,
     page: number = 1,
-    perPage: number = 100
+    perPage: number = 100,
+    filePath?: string
   ): Promise<CommitList> {
     const params = {
       page: page.toString(),
-      per_page: Math.min(perPage, 500).toString()
+      per_page: Math.min(perPage, 500).toString(),
+      file_path: filePath || ""
     };
 
     return this.request(
