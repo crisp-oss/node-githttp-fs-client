@@ -111,6 +111,7 @@ export interface CommitRevertPayload {
 const VERSION = "v1";
 
 /** Defines all HTTP methods */
+const HEAD = "HEAD";
 const GET = "GET";
 const POST = "POST";
 const PUT = "PUT";
@@ -139,7 +140,7 @@ export class GitHTTPFSClient {
    */
   private async request<T>(
     path: string,
-    method: "GET" | "POST" | "PUT" | "DELETE",
+    method: "HEAD" | "GET" | "POST" | "PUT" | "DELETE",
     payload?: any,
     params?: Record<string, string>
   ): Promise<T> {
@@ -165,9 +166,13 @@ export class GitHTTPFSClient {
     const response = await fetch(url.toString(), options);
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorText = method !== HEAD ? await response.text() : "";
 
       throw new Error(`API Error [${response.status}]: ${errorText}`);
+    }
+
+    if (method === HEAD) {
+      return undefined as T;
     }
 
     return response.json();
@@ -198,6 +203,21 @@ export class GitHTTPFSClient {
     return this.request(
       `${collectionId}/${tenantId}/files/${path}`, GET
     );
+  }
+
+  /** Check if a file exists in HEAD without reading its content */
+  async fileExists(collectionId: string, tenantId: string, path: string): Promise<boolean> {
+    try {
+      await this.request(`${collectionId}/${tenantId}/files/${path}`, HEAD);
+
+      return true;
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith("API Error [404]")) {
+        return false;
+      }
+
+      throw e;
+    }
   }
 
   /** Create or update a file */
