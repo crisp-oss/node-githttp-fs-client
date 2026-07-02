@@ -142,15 +142,17 @@ export class GitHTTPFSClient {
     path: string,
     method: "HEAD" | "GET" | "POST" | "PUT" | "DELETE",
     payload?: any,
-    params?: Record<string, string>
+    params?: Record<string, string|undefined>
   ): Promise<T> {
     const url = new URL(`${this.baseUrl}/${VERSION}/${path}`);
 
     // Append query parameters
     if (params) {
-      Object.entries(params).forEach(([key, value]) =>
-        url.searchParams.set(key, value)
-      );
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          url.searchParams.set(key, value);
+        }
+      });
     }
 
     const options: RequestInit = {
@@ -254,7 +256,7 @@ export class GitHTTPFSClient {
     const params = {
       page: page.toString(),
       per_page: Math.min(perPage, 500).toString(),
-      file_path: filePath || ""
+      file_path: filePath || undefined
     };
 
     return this.request(
