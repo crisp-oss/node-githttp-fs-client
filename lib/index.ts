@@ -190,9 +190,10 @@ export class GitHTTPFSClient {
   }
 
   /** List all tracked files (path + size) */
-  async listFiles(collectionId: string, tenantId: string, prefixPath?: string): Promise<Array<FileList>> {
+  async listFiles(collectionId: string, tenantId: string, prefixPath?: string, maximumDepth?: number): Promise<Array<FileList>> {
     const params = {
-      prefix_path: prefixPath || ""
+      prefix_path: prefixPath || "",
+      maximum_depth: maximumDepth !== undefined ? maximumDepth.toString() : undefined
     };
 
     return this.request(
