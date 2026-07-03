@@ -24,19 +24,26 @@ export interface CommitAuthor {
 /**
  * Types for listFiles()
  */
-export interface FileListFile {
+export interface FileListEntityFile {
   name: string;
   size: number;
   type: "file";
 }
 
-export interface FileListDirectory {
+export interface FileListEntityDirectory {
   name: string;
   children: Array<FileList>;
   type: "directory";
 }
 
-export type FileList = FileListFile | FileListDirectory;
+export type FileListFile = FileListEntityFile | FileListEntityDirectory;
+
+export interface FileList {
+  files: Array<FileListFile>;
+  page: number;
+  per_page: number;
+  has_more: boolean;
+}
 
 /**
  * Types for getFileContent()
@@ -190,8 +197,10 @@ export class GitHTTPFSClient {
   }
 
   /** List all tracked files (path + size) */
-  async listFiles(collectionId: string, tenantId: string, prefixPath?: string, maximumDepth?: number): Promise<Array<FileList>> {
+  async listFiles(collectionId: string, tenantId: string, page: number = 1, perPage: number = 100, prefixPath?: string, maximumDepth?: number): Promise<Array<FileList>> {
     const params = {
+      page: page.toString(),
+      per_page: perPage.toString(),
       prefix_path: prefixPath || "",
       maximum_depth: maximumDepth !== undefined ? maximumDepth.toString() : undefined
     };
@@ -256,7 +265,7 @@ export class GitHTTPFSClient {
   ): Promise<CommitList> {
     const params = {
       page: page.toString(),
-      per_page: Math.min(perPage, 500).toString(),
+      per_page: perPage.toString(),
       file_path: filePath || undefined
     };
 
