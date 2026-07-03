@@ -174,16 +174,33 @@ export class GitHTTPFSClient {
     const response = await fetch(url.toString(), options);
 
     if (!response.ok) {
-      const errorData = method !== HEAD ? await response.json() : null;
+      const errorText = method !== HEAD ? await response.text() : "";
 
-      throw new Error(`API Error [${response.status}]: ${errorData?.error || "<unknown>"}`);
+      // Error bodies may be JSON ({ error }) or plain text, depending on \
+      //   where the server failed
+      let errorMessage;
+
+      try {
+        errorMessage = JSON.parse(errorText)?.error;
+      } catch {
+        errorMessage = errorText;
+      }
+
+      throw new Error(`API Error [${response.status}]: ${errorMessage || "<unknown>"}`);
     }
 
     if (method === HEAD) {
       return undefined as T;
     }
 
-    return response.json();
+    // Some success responses have no body (eg. 204 on DELETE)
+    const bodyText = await response.text();
+
+    if (!bodyText) {
+      return undefined as T;
+    }
+
+    return JSON.parse(bodyText);
   }
 
   // --- Tenant Operations ---
