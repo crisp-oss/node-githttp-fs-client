@@ -26,7 +26,6 @@ export interface CommitAuthor {
  */
 export interface FileListEntityFile {
   name: string;
-  size: number;
   type: "file";
 }
 
@@ -196,7 +195,7 @@ export class GitHTTPFSClient {
     );
   }
 
-  /** List all tracked files (path + size) */
+  /** List all tracked files (paths) */
   async listFiles(collectionId: string, tenantId: string, page: number = 1, perPage: number = 100, prefixPath?: string, maximumDepth?: number): Promise<FileList> {
     const params = {
       page: page.toString(),
