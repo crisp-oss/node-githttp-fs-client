@@ -203,7 +203,12 @@ export class GitHTTPFSClient {
         errorMessage = errorText;
       }
 
-      throw new Error(`API Error [${response.status}]: ${errorMessage || "<unknown>"}`);
+      const error = new Error(`githttp-fs [${response.status}]: ${errorMessage || "<unknown>"}`);
+
+      // @ts-ignore
+      error.__statusCode = response.status;
+
+      throw error;
     }
 
     if (method === HEAD) {
@@ -264,7 +269,8 @@ export class GitHTTPFSClient {
 
       return true;
     } catch (error) {
-      if (error instanceof Error && error.message.startsWith("API Error [404]")) {
+      // @ts-ignore
+      if (error instanceof Error && error.__statusCode === 404) {
         return false;
       }
 
