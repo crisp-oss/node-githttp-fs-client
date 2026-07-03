@@ -197,7 +197,7 @@ export class GitHTTPFSClient {
   }
 
   /** List all tracked files (path + size) */
-  async listFiles(collectionId: string, tenantId: string, page: number = 1, perPage: number = 100, prefixPath?: string, maximumDepth?: number): Promise<Array<FileList>> {
+  async listFiles(collectionId: string, tenantId: string, page: number = 1, perPage: number = 100, prefixPath?: string, maximumDepth?: number): Promise<FileList> {
     const params = {
       page: page.toString(),
       per_page: perPage.toString(),
