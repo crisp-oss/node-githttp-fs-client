@@ -167,16 +167,16 @@ export class GitHTTPFSClient {
       headers: this.headers
     };
 
-    if (payload && method !== GET) {
+    if (payload) {
       options.body = JSON.stringify(payload);
     }
 
     const response = await fetch(url.toString(), options);
 
     if (!response.ok) {
-      const errorText = method !== HEAD ? await response.text() : "";
+      const errorData = method !== HEAD ? await response.json() : null;
 
-      throw new Error(`API Error [${response.status}]: ${errorText}`);
+      throw new Error(`API Error [${response.status}]: ${errorData?.error || "<unknown>"}`);
     }
 
     if (method === HEAD) {
