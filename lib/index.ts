@@ -62,6 +62,14 @@ export interface FileWritePayload {
 }
 
 /**
+ * Types for deleteFile()
+ */
+export interface FileDeletePayload {
+  author: CommitAuthor;
+  message?: string;
+}
+
+/**
  * Types for moveFile()
  */
 export interface FileMovePayload {
@@ -208,7 +216,7 @@ export class GitHTTPFSClient {
   /** Delete entire tenant repository */
   async deleteTenant(collectionId: string, tenantId: string): Promise<void> {
     return this.request(
-      `${collectionId}/${tenantId}`, DELETE
+      `${collectionId}/${tenantId}`, DELETE, {}
     );
   }
 
@@ -239,12 +247,12 @@ export class GitHTTPFSClient {
       await this.request(`${collectionId}/${tenantId}/files/${path}`, HEAD);
 
       return true;
-    } catch (e) {
-      if (e instanceof Error && e.message.startsWith("API Error [404]")) {
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("API Error [404]")) {
         return false;
       }
 
-      throw e;
+      throw error;
     }
   }
 
@@ -256,9 +264,9 @@ export class GitHTTPFSClient {
   }
 
   /** Delete a file */
-  async deleteFile(collectionId: string, tenantId: string, path: string): Promise<void> {
+  async deleteFile(collectionId: string, tenantId: string, path: string, payload: FileDeletePayload): Promise<void> {
     return this.request(
-      `${collectionId}/${tenantId}/files/${path}`, DELETE
+      `${collectionId}/${tenantId}/files/${path}`, DELETE, payload
     );
   }
 
