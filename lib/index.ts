@@ -22,6 +22,13 @@ export interface CommitAuthor {
 }
 
 /**
+ * Types for sendPing()
+ */
+export interface PingResult {
+  pong: boolean;
+}
+
+/**
  * Types for listFiles()
  */
 export interface FileListEntityFile {
@@ -153,12 +160,14 @@ export class GitHTTPFSClient {
    * Helper to handle requests and parse JSON responses.
    */
   private async request<T>(
-    path: string,
-    method: "HEAD" | "GET" | "POST" | "PUT" | "DELETE",
+    path: string = "",
+    method: "HEAD" | "GET" | "POST" | "PUT" | "DELETE" = GET,
     payload?: any,
     params?: Record<string, string|undefined>
   ): Promise<T> {
-    const url = new URL(`${this.baseUrl}/${VERSION}/${path}`);
+    const url = new URL(
+      `${this.baseUrl}/${VERSION}` + (path ? `/${path}` : "")
+    );
 
     // Append query parameters
     if (params) {
@@ -209,6 +218,13 @@ export class GitHTTPFSClient {
     }
 
     return JSON.parse(bodyText);
+  }
+
+  // --- Base Operations ---
+
+  /** Ping server */
+  async sendPing(): Promise<PingResult> {
+    return this.request();
   }
 
   // --- Tenant Operations ---

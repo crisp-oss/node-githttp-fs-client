@@ -22,6 +22,11 @@ const AUTHOR = {
 };
 
 try {
+  // Ping server
+  const pingResult = await client.sendPing();
+
+  console.log("Got pong from server:", pingResult);
+
   // Write file
   const writeResult = await client.writeFile(COLLECTION_ID, TENANT_ID, FILE_PATH, {
     content: "This is an example file.",
