@@ -60,6 +60,17 @@ export interface FileContent {
 }
 
 /**
+ * Types for seek options (getFileContent() and batchGetFileContents())
+ */
+export const SEEK_TO_FROM_LINE_STARTS_WITH = "$seek_from_line_starts_with";
+
+export interface FileSeekOptions {
+  from_line_starts_with?: Array<string>;
+  to_line_starts_with?: Array<string> | typeof SEEK_TO_FROM_LINE_STARTS_WITH;
+  lines_maximum?: number;
+}
+
+/**
  * Types for writeFile()
  */
 export interface FileWritePayload {
@@ -126,6 +137,13 @@ export interface CommitDetail {
 export interface CommitRevertPayload {
   author: CommitAuthor;
   message?: string;
+}
+
+/**
+ * Types for batchGetFileContents()
+ */
+export interface FileContentBatch {
+  files: Array<FileContent | null>;
 }
 
 /** Defines the API version */
@@ -255,10 +273,26 @@ export class GitHTTPFSClient {
     );
   }
 
-  /** Read file content */
-  async getFileContent(collectionId: string, tenantId: string, path: string): Promise<FileContent> {
+  /** Read file content (optionally narrowed to a line window with seek) */
+  async getFileContent(collectionId: string, tenantId: string, path: string, seek?: FileSeekOptions): Promise<FileContent> {
+    // Prefix lists travel as JSON-array strings in query parameters, \
+    //   except the bare meta value which is passed as-is
+    const params = {
+      seek_from_line_starts_with: (seek?.from_line_starts_with !== undefined)
+        ? JSON.stringify(seek.from_line_starts_with)
+        : undefined,
+      seek_to_line_starts_with: (seek?.to_line_starts_with !== undefined)
+        ? (typeof seek.to_line_starts_with === "string")
+          ? seek.to_line_starts_with
+          : JSON.stringify(seek.to_line_starts_with)
+        : undefined,
+      seek_lines_maximum: (seek?.lines_maximum !== undefined)
+        ? seek.lines_maximum.toString()
+        : undefined
+    };
+
     return this.request(
-      `${collectionId}/${tenantId}/files/${path}`, GET
+      `${collectionId}/${tenantId}/files/${path}`, GET, undefined, params
     );
   }
 
@@ -331,6 +365,19 @@ export class GitHTTPFSClient {
   async revertCommit(collectionId: string, tenantId: string, sha: string, payload: CommitRevertPayload): Promise<void> {
     return this.request(
       `${collectionId}/${tenantId}/commits/${sha}/revert`, POST, payload
+    );
+  }
+
+  // --- Batch Operations ---
+
+  /** Read multiple file contents in one request (a null slot means the \
+        path does not exist; an optional seek window applies to every file) */
+  async batchGetFileContents(collectionId: string, tenantId: string, paths: Array<string>, seek?: FileSeekOptions): Promise<FileContentBatch> {
+    return this.request(
+      `${collectionId}/${tenantId}/batch/files/read`, POST, {
+        files: paths,
+        seek
+      }
     );
   }
 }

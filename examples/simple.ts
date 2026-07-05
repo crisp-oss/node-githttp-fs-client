@@ -29,7 +29,7 @@ try {
 
   // Write file
   const writeResult = await client.writeFile(COLLECTION_ID, TENANT_ID, FILE_PATH, {
-    content: "This is an example file.",
+    content: "---\ntitle: Hello World\n---\n\nThis is an example file.",
     author: AUTHOR,
     message: "chore: add example file"
   });
@@ -50,6 +50,24 @@ try {
   const content = await client.getFileContent(COLLECTION_ID, TENANT_ID, FILE_PATH);
 
   console.log("Got content:", content);
+
+  // Get file (seek to the first line only)
+  const seekContent = await client.getFileContent(COLLECTION_ID, TENANT_ID, FILE_PATH, {
+    lines_maximum: 1
+  });
+
+  console.log("Got seek content:", seekContent);
+
+  // Get multiple files in one request (missing paths come back as null)
+  const batchContents = await client.batchGetFileContents(COLLECTION_ID, TENANT_ID, [
+    FILE_PATH,
+    "hello-world/does-not-exist.md"
+  ], {
+    from_line_starts_with: ["---"],
+    to_line_starts_with: "$seek_from_line_starts_with"
+  });
+
+  console.log("Got batch contents (headers only):", batchContents);
 
   // Delete file
   const deleteResult = await client.deleteFile(COLLECTION_ID, TENANT_ID, FILE_PATH, {
