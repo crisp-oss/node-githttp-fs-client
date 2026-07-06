@@ -47,7 +47,7 @@ try {
   console.log("Listed files:", files);
 
   // List commits for tenant
-  const commits = await client.listCommits(COLLECTION_ID, TENANT_ID, 1, 3);
+  const commits = await client.listCommits(COLLECTION_ID, TENANT_ID, { page: 1, perPage: 3 });
 
   console.log("Listed latest commits:", commits);
 
@@ -58,7 +58,7 @@ try {
 
   // Get file (seek to the first line only)
   const seekContent = await client.getFileContent(COLLECTION_ID, TENANT_ID, FILE_PATH, {
-    lines_maximum: 1
+    seek: { lines_maximum: 1 }
   });
 
   console.log("Got seek content:", seekContent);
@@ -68,8 +68,10 @@ try {
     FILE_PATH,
     "hello-world/does-not-exist.md"
   ], {
-    from_line_starts_with: ["---"],
-    to_line_starts_with: "$seek_from_line_starts_with"
+    seek: {
+      from_line_starts_with: ["---"],
+      to_line_starts_with: "$seek_from_line_starts_with"
+    }
   });
 
   console.log("Got batch contents (headers only):", batchContents);

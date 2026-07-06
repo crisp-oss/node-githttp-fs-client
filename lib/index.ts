@@ -36,6 +36,13 @@ export interface FileCount {
   directories: number;
 }
 
+export interface CountFilesOptions {
+  prefixPath?: string;
+  maximumDepth?: number;
+  includeHiddenFiles?: boolean;
+  restrictFileExtensions?: Array<string>;
+}
+
 /**
  * Types for listFiles()
  */
@@ -59,12 +66,24 @@ export interface FileList {
   has_more: boolean;
 }
 
+export interface ListFilesOptions {
+  page?: number;
+  perPage?: number;
+  prefixPath?: string;
+  maximumDepth?: number;
+  includeHiddenFiles?: boolean;
+}
+
 /**
  * Types for getFileContent()
  */
 export interface FileContent {
   content: string;
   path: string;
+}
+
+export interface GetFileContentOptions {
+  seek?: FileSeekOptions;
 }
 
 /**
@@ -121,6 +140,12 @@ export interface CommitList {
   has_more: boolean;
 }
 
+export interface ListCommitsOptions {
+  page?: number;
+  perPage?: number;
+  filePath?: string;
+}
+
 /**
  * Types for getCommitDetail()
  */
@@ -157,6 +182,10 @@ export type FileContentBatchPath = string | {
 
 export interface FileContentBatch {
   files: Array<FileContent | null>;
+}
+
+export interface BatchGetFileContentsOptions {
+  seek?: FileSeekOptions;
 }
 
 /** Defines the API version */
@@ -267,7 +296,9 @@ export class GitHTTPFSClient {
 
   /** Count files and directories (an optional list of file extensions \
         narrows the file count to files carrying one of them) */
-  async countFiles(collectionId: string, tenantId: string, prefixPath?: string, maximumDepth?: number, includeHiddenFiles?: boolean, restrictFileExtensions?: Array<string>): Promise<FileCount> {
+  async countFiles(collectionId: string, tenantId: string, options: CountFilesOptions = {}): Promise<FileCount> {
+    const { prefixPath, maximumDepth, includeHiddenFiles, restrictFileExtensions } = options;
+
     // Extension lists travel as JSON-array strings in query parameters, \
     //   same wire spelling as the seek prefix lists
     const params = {
@@ -292,7 +323,9 @@ export class GitHTTPFSClient {
   }
 
   /** List all tracked files (paths) */
-  async listFiles(collectionId: string, tenantId: string, page: number = 1, perPage: number = 100, prefixPath?: string, maximumDepth?: number, includeHiddenFiles?: boolean): Promise<FileList> {
+  async listFiles(collectionId: string, tenantId: string, options: ListFilesOptions = {}): Promise<FileList> {
+    const { page = 1, perPage = 100, prefixPath, maximumDepth, includeHiddenFiles } = options;
+
     const params = {
       page: page.toString(),
       per_page: perPage.toString(),
@@ -307,7 +340,9 @@ export class GitHTTPFSClient {
   }
 
   /** Read file content (optionally narrowed to a line window with seek) */
-  async getFileContent(collectionId: string, tenantId: string, path: string, seek?: FileSeekOptions): Promise<FileContent> {
+  async getFileContent(collectionId: string, tenantId: string, path: string, options: GetFileContentOptions = {}): Promise<FileContent> {
+    const { seek } = options;
+
     // Prefix lists travel as JSON-array strings in query parameters, \
     //   except the bare meta value which is passed as-is
     const params = {
@@ -369,13 +404,9 @@ export class GitHTTPFSClient {
   // --- Commit Operations ---
 
   /** List commits with pagination */
-  async listCommits(
-    collectionId: string,
-    tenantId: string,
-    page: number = 1,
-    perPage: number = 100,
-    filePath?: string
-  ): Promise<CommitList> {
+  async listCommits(collectionId: string, tenantId: string, options: ListCommitsOptions = {}): Promise<CommitList> {
+    const { page = 1, perPage = 100, filePath } = options;
+
     const params = {
       page: page.toString(),
       per_page: perPage.toString(),
@@ -406,7 +437,9 @@ export class GitHTTPFSClient {
   /** Read multiple file contents in one request (a null slot means the \
         path does not exist; an optional seek window applies to every file, \
         overridable per file with a { path, seek } entry) */
-  async batchGetFileContents(collectionId: string, tenantId: string, paths: Array<FileContentBatchPath>, seek?: FileSeekOptions): Promise<FileContentBatch> {
+  async batchGetFileContents(collectionId: string, tenantId: string, paths: Array<FileContentBatchPath>, options: BatchGetFileContentsOptions = {}): Promise<FileContentBatch> {
+    const { seek } = options;
+
     return this.request(
       `${collectionId}/${tenantId}/batch/files/read`, POST, {
         files: paths,
