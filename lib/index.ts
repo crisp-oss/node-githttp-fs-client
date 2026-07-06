@@ -142,6 +142,11 @@ export interface CommitRevertPayload {
 /**
  * Types for batchGetFileContents()
  */
+export type FileContentBatchPath = string | {
+  path: string;
+  seek?: FileSeekOptions;
+};
+
 export interface FileContentBatch {
   files: Array<FileContent | null>;
 }
@@ -371,8 +376,9 @@ export class GitHTTPFSClient {
   // --- Batch Operations ---
 
   /** Read multiple file contents in one request (a null slot means the \
-        path does not exist; an optional seek window applies to every file) */
-  async batchGetFileContents(collectionId: string, tenantId: string, paths: Array<string>, seek?: FileSeekOptions): Promise<FileContentBatch> {
+        path does not exist; an optional seek window applies to every file, \
+        overridable per file with a { path, seek } entry) */
+  async batchGetFileContents(collectionId: string, tenantId: string, paths: Array<FileContentBatchPath>, seek?: FileSeekOptions): Promise<FileContentBatch> {
     return this.request(
       `${collectionId}/${tenantId}/batch/files/read`, POST, {
         files: paths,

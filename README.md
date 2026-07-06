@@ -151,14 +151,15 @@ await client.revertCommit("notes", "t_1", "9b924c1d...", {
 
 #### `batchGetFileContents(collectionId, tenantId, paths, seek?): Promise<FileContentBatch>`
 
-Reads several files in one request. The returned `files` array is index-aligned with `paths`: each slot is either a `{ path, content }` object, or `null` when that path does not exist. An optional `seek` object applies the same line window to every file (see [Seek options](#seek-options)).
+Reads several files in one request. The returned `files` array is index-aligned with `paths`: each slot is either a `{ path, content }` object, or `null` when that path does not exist. An optional `seek` object applies the same line window to every file (see [Seek options](#seek-options)). Each entry of `paths` is either a bare path string, or a `{ path, seek? }` object whose `seek` replaces the shared one for that file (no field-by-field merge).
 
 ```ts
 const batch = await client.batchGetFileContents("notes", "t_1", [
   "articles/hello.md",
-  "articles/missing.md"
+  "articles/missing.md",
+  { path: "articles/long.md", seek: { lines_maximum: 10 } }
 ]);
-// { files: [{ path, content }, null] }
+// { files: [{ path, content }, null, { path, content }] }
 ```
 
 ### Seek options
