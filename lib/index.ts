@@ -29,6 +29,14 @@ export interface PingResult {
 }
 
 /**
+ * Types for countFiles()
+ */
+export interface FileCount {
+  files: number;
+  directories: number;
+}
+
+/**
  * Types for listFiles()
  */
 export interface FileListEntityFile {
@@ -255,6 +263,25 @@ export class GitHTTPFSClient {
     return this.request();
   }
 
+  // --- Count Operations ---
+
+  /** Count files and directories (an optional list of file extensions \
+        narrows the file count to files carrying one of them) */
+  async countFiles(collectionId: string, tenantId: string, prefixPath?: string, maximumDepth?: number, includeHiddenFiles?: boolean, restrictFileExtensions?: Array<string>): Promise<FileCount> {
+    // Extension lists travel as JSON-array strings in query parameters, \
+    //   same wire spelling as the seek prefix lists
+    const params = {
+      prefix_path: prefixPath || "",
+      maximum_depth: maximumDepth !== undefined ? maximumDepth.toString() : undefined,
+      include_hidden_files: includeHiddenFiles !== undefined ? includeHiddenFiles.toString() : undefined,
+      restrict_file_extensions: restrictFileExtensions !== undefined ? JSON.stringify(restrictFileExtensions) : undefined
+    };
+
+    return this.request(
+      `${collectionId}/${tenantId}/count/files`, GET, undefined, params
+    );
+  }
+
   // --- Tenant Operations ---
 
   /** Delete entire tenant repository */
@@ -265,12 +292,13 @@ export class GitHTTPFSClient {
   }
 
   /** List all tracked files (paths) */
-  async listFiles(collectionId: string, tenantId: string, page: number = 1, perPage: number = 100, prefixPath?: string, maximumDepth?: number): Promise<FileList> {
+  async listFiles(collectionId: string, tenantId: string, page: number = 1, perPage: number = 100, prefixPath?: string, maximumDepth?: number, includeHiddenFiles?: boolean): Promise<FileList> {
     const params = {
       page: page.toString(),
       per_page: perPage.toString(),
       prefix_path: prefixPath || "",
-      maximum_depth: maximumDepth !== undefined ? maximumDepth.toString() : undefined
+      maximum_depth: maximumDepth !== undefined ? maximumDepth.toString() : undefined,
+      include_hidden_files: includeHiddenFiles !== undefined ? includeHiddenFiles.toString() : undefined
     };
 
     return this.request(

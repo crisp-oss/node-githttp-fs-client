@@ -46,6 +46,17 @@ const pong = await client.sendPing();
 // { pong: true }
 ```
 
+### Count operations
+
+#### `countFiles(collectionId, tenantId, prefixPath?, maximumDepth?, includeHiddenFiles?, restrictFileExtensions?): Promise<FileCount>`
+
+Counts files and directories, without pagination. `prefixPath`, `maximumDepth` and `includeHiddenFiles` scope the count exactly like `listFiles()`. Pass `restrictFileExtensions` (an array of extensions, compared case-insensitively) to only count files carrying one of those extensions — directories are counted regardless.
+
+```ts
+const count = await client.countFiles("notes", "t_1", "articles/", undefined, false, ["md", "mdx"]);
+// { files: 12, directories: 3 }
+```
+
 ### Tenant operations
 
 #### `deleteTenant(collectionId, tenantId): Promise<void>`
@@ -58,12 +69,12 @@ await client.deleteTenant("notes", "t_1");
 
 ### File operations
 
-#### `listFiles(collectionId, tenantId, page?, perPage?, prefixPath?, maximumDepth?): Promise<FileList>`
+#### `listFiles(collectionId, tenantId, page?, perPage?, prefixPath?, maximumDepth?, includeHiddenFiles?): Promise<FileList>`
 
-Lists all tracked files as a paginated tree of file and directory entries. Defaults to `page = 1` and `perPage = 100`. Pass `prefixPath` to list only files under a folder, and `maximumDepth` to limit how deep the tree goes.
+Lists all tracked files as a paginated tree of file and directory entries. Defaults to `page = 1` and `perPage = 100`. Pass `prefixPath` to list only files under a folder, and `maximumDepth` to limit how deep the tree goes. Hidden entries (dot-prefixed files and directories) are excluded by default; pass `includeHiddenFiles = true` to include them.
 
 ```ts
-const list = await client.listFiles("notes", "t_1", 1, 100, "articles/", 2);
+const list = await client.listFiles("notes", "t_1", 1, 100, "articles/", 2, false);
 // { files: [...], page: 1, per_page: 100, has_more: false }
 ```
 
