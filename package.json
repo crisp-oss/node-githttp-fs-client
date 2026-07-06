@@ -1,7 +1,7 @@
 {
   "name": "githttp-fs-client",
   "description": "Git HTTP FS client for Node. Used in pair with Git HTTP FS, a git-backed content management database served over HTTP.",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "type": "module",
   "homepage": "https://github.com/crisp-oss/node-githttp-fs-client",
   "license": "MIT",
