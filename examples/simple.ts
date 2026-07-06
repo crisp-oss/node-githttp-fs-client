@@ -36,6 +36,11 @@ try {
 
   console.log("Wrote file: " + FILE_PATH, writeResult);
 
+  // Count files
+  const counts = await client.countFiles(COLLECTION_ID, TENANT_ID);
+
+  console.log("Got file counts:", counts);
+
   // List files for tenant
   const files = await client.listFiles(COLLECTION_ID, TENANT_ID);
 
