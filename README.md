@@ -132,20 +132,20 @@ await client.moveFile("notes", "t_1", "articles/hello.md", {
 
 #### `listCommits(collectionId, tenantId, page?, perPage?, filePath?): Promise<CommitList>`
 
-Lists commits, most recent first, with pagination. Defaults to `page = 1` and `perPage = 100`. Pass `filePath` to only list commits that touched a given file.
+Lists commits, most recent first, with pagination. Defaults to `page = 1` and `perPage = 100`. Pass `filePath` to only list commits that touched a given file. Pass `includeStatistics: true` to add a `statistics` (`{ insertions, deletions, files_changed }`) object to each commit.
 
 ```ts
-const commits = await client.listCommits("notes", "t_1", 1, 10);
+const commits = await client.listCommits("notes", "t_1", { page: 1, perPage: 10 });
 // { commits: [{ sha, message, author, committed_at }, ...], ... }
 ```
 
 #### `getCommitDetail(collectionId, tenantId, sha): Promise<CommitDetail>`
 
-Returns the details of a commit, with per-file diffs and content snapshots.
+Returns the details of a commit, with per-file diffs, content snapshots, and aggregate `statistics` (`{ insertions, deletions, files_changed }`).
 
 ```ts
 const detail = await client.getCommitDetail("notes", "t_1", "9b924c1d...");
-// { sha, message, author, committed_at, files: [{ path, change, content, diff }] }
+// { sha, message, author, committed_at, files: [{ path, change, content, diff }], statistics: { insertions, deletions, files_changed } }
 ```
 
 #### `revertCommit(collectionId, tenantId, sha, payload): Promise<void>`

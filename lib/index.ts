@@ -124,6 +124,15 @@ export interface FileMovePayload {
 }
 
 /**
+ * Types shared by listCommits() and getCommitDetail()
+ */
+export interface CommitStatistics {
+  insertions: number;
+  deletions: number;
+  files_changed: number;
+}
+
+/**
  * Types for listCommits()
  */
 export interface CommitListCommit {
@@ -131,6 +140,7 @@ export interface CommitListCommit {
   committed_at: string;
   message: string;
   sha: string;
+  statistics?: CommitStatistics;
 }
 
 export interface CommitList {
@@ -144,6 +154,7 @@ export interface ListCommitsOptions {
   page?: number;
   perPage?: number;
   filePath?: string;
+  includeStatistics?: boolean;
 }
 
 /**
@@ -162,6 +173,7 @@ export interface CommitDetail {
   author: CommitAuthor;
   committed_at: string;
   files: Array<CommitDetailFile>;
+  statistics: CommitStatistics;
 }
 
 /**
@@ -405,12 +417,13 @@ export class GitHTTPFSClient {
 
   /** List commits with pagination */
   async listCommits(collectionId: string, tenantId: string, options: ListCommitsOptions = {}): Promise<CommitList> {
-    const { page = 1, perPage = 100, filePath } = options;
+    const { page = 1, perPage = 100, filePath, includeStatistics } = options;
 
     const params = {
       page: page.toString(),
       per_page: perPage.toString(),
-      file_path: filePath || undefined
+      file_path: filePath || undefined,
+      include_statistics: includeStatistics ? "true" : undefined
     };
 
     return this.request(
