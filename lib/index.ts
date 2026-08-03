@@ -53,7 +53,7 @@ export interface FileListEntityFile {
 
 export interface FileListEntityDirectory {
   name: string;
-  children: Array<FileList>;
+  children: Array<FileListFile>;
   type: "directory";
 }
 
