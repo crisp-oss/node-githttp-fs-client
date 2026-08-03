@@ -72,6 +72,7 @@ export interface ListFilesOptions {
   prefixPath?: string;
   maximumDepth?: number;
   includeHiddenFiles?: boolean;
+  fileNameStartsWith?: string | Array<string>;
 }
 
 /**
@@ -336,14 +337,21 @@ export class GitHTTPFSClient {
 
   /** List all tracked files (paths) */
   async listFiles(collectionId: string, tenantId: string, options: ListFilesOptions = {}): Promise<FileList> {
-    const { page = 1, perPage = 100, prefixPath, maximumDepth, includeHiddenFiles } = options;
+    const { page = 1, perPage = 100, prefixPath, maximumDepth, includeHiddenFiles, fileNameStartsWith } = options;
 
     const params = {
       page: page.toString(),
       per_page: perPage.toString(),
       prefix_path: prefixPath || "",
       maximum_depth: maximumDepth !== undefined ? maximumDepth.toString() : undefined,
-      include_hidden_files: includeHiddenFiles !== undefined ? includeHiddenFiles.toString() : undefined
+      include_hidden_files: includeHiddenFiles !== undefined ? includeHiddenFiles.toString() : undefined,
+      // A single prefix travels as-is; a list of prefixes travels as a \
+      //   JSON-array string, same wire spelling as the seek prefix lists
+      file_name_starts_with: (fileNameStartsWith !== undefined)
+        ? (Array.isArray(fileNameStartsWith)
+          ? JSON.stringify(fileNameStartsWith)
+          : fileNameStartsWith)
+        : undefined
     };
 
     return this.request(

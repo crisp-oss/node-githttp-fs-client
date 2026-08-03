@@ -69,9 +69,9 @@ await client.deleteTenant("notes", "t_1");
 
 ### File operations
 
-#### `listFiles(collectionId, tenantId, page?, perPage?, prefixPath?, maximumDepth?, includeHiddenFiles?): Promise<FileList>`
+#### `listFiles(collectionId, tenantId, page?, perPage?, prefixPath?, maximumDepth?, includeHiddenFiles?, fileNameStartsWith?): Promise<FileList>`
 
-Lists all tracked files as a paginated tree of file and directory entries. Defaults to `page = 1` and `perPage = 100`. Pass `prefixPath` to list only files under a folder, and `maximumDepth` to limit how deep the tree goes. Hidden entries (dot-prefixed files and directories) are excluded by default; pass `includeHiddenFiles = true` to include them.
+Lists all tracked files as a paginated tree of file and directory entries. Defaults to `page = 1` and `perPage = 100`. Pass `prefixPath` to list only files under a folder, and `maximumDepth` to limit how deep the tree goes. Hidden entries (dot-prefixed files and directories) are excluded by default; pass `includeHiddenFiles = true` to include them. Pass `fileNameStartsWith` to narrow the listing to files *and directories* whose leaf name begins with a given prefix, compared case-insensitively (a matched directory brings its whole subtree along). It accepts either a single prefix (a string) or an array of prefixes, in which case an entry matches if its leaf name begins with *any* of them. An empty string, an empty array, or an empty prefix are all rejected with a `400`.
 
 ```ts
 const list = await client.listFiles("notes", "t_1", 1, 100, "articles/", 2, false);
