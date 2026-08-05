@@ -69,13 +69,25 @@ await client.deleteTenant("notes", "t_1");
 
 ### File operations
 
-#### `listFiles(collectionId, tenantId, page?, perPage?, prefixPath?, maximumDepth?, includeHiddenFiles?, fileNameStartsWith?): Promise<FileList>`
+#### `listFiles(collectionId, tenantId, options?): Promise<FileList>`
+
+Options: `page`, `perPage`, `prefixPath`, `maximumDepth`, `includeHiddenFiles`, `fileNameStartsWith`, `includeDateFrom`, `includeDateTo`, `includeDateType`.
 
 Lists all tracked files as a paginated tree of file and directory entries. Defaults to `page = 1` and `perPage = 100`. Pass `prefixPath` to list only files under a folder, and `maximumDepth` to limit how deep the tree goes. Hidden entries (dot-prefixed files and directories) are excluded by default; pass `includeHiddenFiles = true` to include them. Pass `fileNameStartsWith` to narrow the listing to files *and directories* whose leaf name begins with a given prefix, compared case-insensitively (a matched directory brings its whole subtree along). It accepts either a single prefix (a string) or an array of prefixes, in which case an entry matches if its leaf name begins with *any* of them. An empty string, an empty array, or an empty prefix are all rejected with a `400`.
 
+Pass `includeDateFrom` and/or `includeDateTo` (a `Date`, or an RFC 3339 date-time string) to narrow the listing to files whose git date falls in the half-open window `[from, to)` — `from` inclusive, `to` exclusive. Each bound is independently optional; when both are given, `from` must be strictly before `to` (else `400`). `includeDateType` selects which date is compared: `"updated"` (the default, most recent commit touching the file) or `"created"` (oldest commit introducing it under its current path, renames not followed). Beware that, unlike every other listing mode, a date filter cannot be answered from git trees alone: it walks commit history, so its cost scales with history length (`"created"` always walks to the root of history). The filter is only active — and only paid for — when at least one bound is given.
+
 ```ts
-const list = await client.listFiles("notes", "t_1", 1, 100, "articles/", 2, false);
+const list = await client.listFiles("notes", "t_1", {
+  page: 1, perPage: 100, prefixPath: "articles/", maximumDepth: 2
+});
 // { files: [...], page: 1, per_page: 100, has_more: false }
+
+// Files updated since a given date:
+const recent = await client.listFiles("notes", "t_1", {
+  includeDateFrom: new Date("2026-06-16T10:00:00Z"),
+  includeDateType: "updated"
+});
 ```
 
 #### `getFileContent(collectionId, tenantId, path, seek?): Promise<FileContent>`

@@ -66,6 +66,8 @@ export interface FileList {
   has_more: boolean;
 }
 
+export type ListFilesDateType = "updated" | "created";
+
 export interface ListFilesOptions {
   page?: number;
   perPage?: number;
@@ -73,6 +75,9 @@ export interface ListFilesOptions {
   maximumDepth?: number;
   includeHiddenFiles?: boolean;
   fileNameStartsWith?: string | Array<string>;
+  includeDateFrom?: string | Date;
+  includeDateTo?: string | Date;
+  includeDateType?: ListFilesDateType;
 }
 
 /**
@@ -212,6 +217,18 @@ const PUT = "PUT";
 const DELETE = "DELETE";
 
 /**
+ * Serializes an optional date bound to its RFC 3339 wire spelling (a Date is \
+ *   converted, a string is trusted as-is).
+ */
+function toRFC3339(date?: string | Date): string | undefined {
+  if (date === undefined) {
+    return undefined;
+  }
+
+  return (date instanceof Date) ? date.toISOString() : date;
+}
+
+/**
  * Git HTTP FS client, manages files and commits over the Git HTTP FS HTTP API.
  */
 export class GitHTTPFSClient {
@@ -337,7 +354,10 @@ export class GitHTTPFSClient {
 
   /** List all tracked files (paths) */
   async listFiles(collectionId: string, tenantId: string, options: ListFilesOptions = {}): Promise<FileList> {
-    const { page = 1, perPage = 100, prefixPath, maximumDepth, includeHiddenFiles, fileNameStartsWith } = options;
+    const {
+      page = 1, perPage = 100, prefixPath, maximumDepth, includeHiddenFiles, fileNameStartsWith,
+      includeDateFrom, includeDateTo, includeDateType
+    } = options;
 
     const params = {
       page: page.toString(),
@@ -351,7 +371,12 @@ export class GitHTTPFSClient {
         ? (Array.isArray(fileNameStartsWith)
           ? JSON.stringify(fileNameStartsWith)
           : fileNameStartsWith)
-        : undefined
+        : undefined,
+      // Date bounds travel as RFC 3339 date-times; a Date object is \
+      //   serialized, a string is passed verbatim (already RFC 3339)
+      include_date_from: toRFC3339(includeDateFrom),
+      include_date_to: toRFC3339(includeDateTo),
+      include_date_type: includeDateType
     };
 
     return this.request(
