@@ -170,6 +170,16 @@ await client.revertCommit("notes", "t_1", "9b924c1d...", {
 });
 ```
 
+#### `rollbackCommit(collectionId, tenantId, sha, payload): Promise<void>`
+
+Rolls every file the commit touched back to the exact state it had **at** that commit, as a new commit. Where `revertCommit()` undoes what the commit did, this discards every later change to those same paths: a file deleted since comes back, and a file that commit deleted is deleted again. Files the commit never touched are left alone. The payload is the same as for a revert: the commit `author` and an optional `message` (no paths, they are read from the commit itself).
+
+```ts
+await client.rollbackCommit("notes", "t_1", "9b924c1d...", {
+  author: { name: "Jane Doe", email: "jane@doe.com" }
+});
+```
+
 ### Batch operations
 
 #### `batchGetFileContents(collectionId, tenantId, paths, seek?): Promise<FileContentBatch>`

@@ -191,6 +191,11 @@ export interface CommitRevertPayload {
 }
 
 /**
+ * Types for rollbackCommit()
+ */
+export type CommitRollbackPayload = CommitRevertPayload;
+
+/**
  * Types for batchGetFileContents()
  */
 export type FileContentBatchPath = string | {
@@ -475,6 +480,14 @@ export class GitHTTPFSClient {
   async revertCommit(collectionId: string, tenantId: string, sha: string, payload: CommitRevertPayload): Promise<void> {
     return this.request(
       `${collectionId}/${tenantId}/commits/${sha}/revert`, POST, payload
+    );
+  }
+
+  /** Roll the files a commit touched back to the state they had at it \
+        (point-in-time rollback, as a new commit) */
+  async rollbackCommit(collectionId: string, tenantId: string, sha: string, payload: CommitRollbackPayload): Promise<void> {
+    return this.request(
+      `${collectionId}/${tenantId}/commits/${sha}/rollback`, POST, payload
     );
   }
 
