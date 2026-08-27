@@ -113,11 +113,19 @@ export interface FileWritePayload {
 }
 
 /**
+ * Types for fileExists()
+ */
+export interface FileExistsOptions {
+  checkPrefixPath?: boolean;
+}
+
+/**
  * Types for deleteFile()
  */
 export interface FileDeletePayload {
   author: CommitAuthor;
   message?: string;
+  allowPrefixPathRecurse?: boolean;
 }
 
 /**
@@ -127,6 +135,7 @@ export interface FileMovePayload {
   author: CommitAuthor;
   destination: string;
   message?: string;
+  allowPrefixPathRecurse?: boolean;
 }
 
 /**
@@ -414,10 +423,18 @@ export class GitHTTPFSClient {
     );
   }
 
-  /** Check if a file exists in HEAD without reading its content */
-  async fileExists(collectionId: string, tenantId: string, path: string): Promise<boolean> {
+  /** Check if a file exists in HEAD without reading its content (with \
+        'checkPrefixPath' enabled, a directory at that path counts as \
+        existing too) */
+  async fileExists(collectionId: string, tenantId: string, path: string, options: FileExistsOptions = {}): Promise<boolean> {
+    const { checkPrefixPath } = options;
+
+    const params = {
+      check_prefix_path: checkPrefixPath !== undefined ? checkPrefixPath.toString() : undefined
+    };
+
     try {
-      await this.request(`${collectionId}/${tenantId}/files/${path}`, HEAD);
+      await this.request(`${collectionId}/${tenantId}/files/${path}`, HEAD, undefined, params);
 
       return true;
     } catch (error) {
@@ -437,17 +454,33 @@ export class GitHTTPFSClient {
     );
   }
 
-  /** Delete a file */
+  /** Delete a file (with 'allowPrefixPathRecurse' enabled in the payload, \
+        the path may name a directory, whose files are all deleted in a \
+        single commit) */
   async deleteFile(collectionId: string, tenantId: string, path: string, payload: FileDeletePayload): Promise<void> {
+    const { allowPrefixPathRecurse, ...basePayload } = payload;
+
     return this.request(
-      `${collectionId}/${tenantId}/files/${path}`, DELETE, payload
+      `${collectionId}/${tenantId}/files/${path}`, DELETE, {
+        ...basePayload,
+
+        allow_prefix_path_recurse: allowPrefixPathRecurse
+      }
     );
   }
 
-  /** Move / rename a file */
+  /** Move / rename a file (with 'allowPrefixPathRecurse' enabled in the \
+        payload, the path may name a directory, whose whole subtree is \
+        relocated in a single commit) */
   async moveFile(collectionId: string, tenantId: string, path: string, payload: FileMovePayload): Promise<void> {
+    const { allowPrefixPathRecurse, ...basePayload } = payload;
+
     return this.request(
-      `${collectionId}/${tenantId}/files/${path}/move`, POST, payload
+      `${collectionId}/${tenantId}/files/${path}/move`, POST, {
+        ...basePayload,
+
+        allow_prefix_path_recurse: allowPrefixPathRecurse
+      }
     );
   }
 

@@ -99,12 +99,17 @@ const file = await client.getFileContent("notes", "t_1", "articles/hello.md");
 // { path: "articles/hello.md", content: "..." }
 ```
 
-#### `fileExists(collectionId, tenantId, path): Promise<boolean>`
+#### `fileExists(collectionId, tenantId, path, options?): Promise<boolean>`
 
-Checks whether a file exists, without reading its content (cheaper than `getFileContent()`).
+Checks whether a file exists, without reading its content (cheaper than `getFileContent()`). Pass `checkPrefixPath: true` to also count a directory at that path as existing (useful before a recursive delete or move).
 
 ```ts
 const exists = await client.fileExists("notes", "t_1", "articles/hello.md");
+
+// Does anything exist at this path, file or directory?
+const anyExists = await client.fileExists("notes", "t_1", "articles", {
+  checkPrefixPath: true
+});
 ```
 
 #### `writeFile(collectionId, tenantId, path, payload): Promise<void>`
@@ -129,6 +134,15 @@ await client.deleteFile("notes", "t_1", "articles/hello.md", {
 });
 ```
 
+Set `allowPrefixPathRecurse: true` to let the path name a directory instead, deleting every file beneath it in a single commit (one webhook event per file). It only permits directory semantics: a path resolving to a file still runs the ordinary single-file delete.
+
+```ts
+await client.deleteFile("notes", "t_1", "articles", {
+  author: { name: "Jane Doe", email: "jane@doe.com" },
+  allowPrefixPathRecurse: true
+});
+```
+
 #### `moveFile(collectionId, tenantId, path, payload): Promise<void>`
 
 Moves (or renames) a file to the payload's `destination` path, committing the change. The payload also holds the commit `author` and an optional `message`.
@@ -137,6 +151,16 @@ Moves (or renames) a file to the payload's `destination` path, committing the ch
 await client.moveFile("notes", "t_1", "articles/hello.md", {
   destination: "archives/hello.md",
   author: { name: "Jane Doe", email: "jane@doe.com" }
+});
+```
+
+Set `allowPrefixPathRecurse: true` to let the path name a directory instead, relocating its whole subtree in a single commit (each file keeps its own leaf name, and emits its own move event). The `destination` must not already exist, and must not sit inside the source directory.
+
+```ts
+await client.moveFile("notes", "t_1", "articles", {
+  destination: "archives",
+  author: { name: "Jane Doe", email: "jane@doe.com" },
+  allowPrefixPathRecurse: true
 });
 ```
 
