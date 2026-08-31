@@ -46,6 +46,34 @@ try {
 
   console.log("Listed files:", files);
 
+  // Pin the file order of the directory holding the example file
+  const writeOrderResult = await client.writeFileOrder(COLLECTION_ID, TENANT_ID, "hello-world", {
+    order: ["index.md"],
+    author: AUTHOR,
+    message: "chore: order example directory"
+  });
+
+  console.log("Wrote file order for: hello-world", writeOrderResult);
+
+  // Get the file order back
+  const order = await client.getFileOrder(COLLECTION_ID, TENANT_ID, "hello-world");
+
+  console.log("Got file order:", order);
+
+  // List files, ordered by the stored file orders
+  const orderedFiles = await client.listFiles(COLLECTION_ID, TENANT_ID, {
+    applyOrderIndex: true
+  });
+
+  console.log("Listed ordered files:", orderedFiles);
+
+  // Drop the file order again
+  const deleteOrderResult = await client.deleteFileOrder(COLLECTION_ID, TENANT_ID, "hello-world", {
+    author: AUTHOR
+  });
+
+  console.log("Deleted file order for: hello-world", deleteOrderResult);
+
   // List commits for tenant
   const commits = await client.listCommits(COLLECTION_ID, TENANT_ID, { page: 1, perPage: 3 });
 

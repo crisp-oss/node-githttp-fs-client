@@ -71,11 +71,13 @@ await client.deleteTenant("notes", "t_1");
 
 #### `listFiles(collectionId, tenantId, options?): Promise<FileList>`
 
-Options: `page`, `perPage`, `prefixPath`, `maximumDepth`, `includeHiddenFiles`, `fileNameStartsWith`, `includeDateFrom`, `includeDateTo`, `includeDateType`.
+Options: `page`, `perPage`, `prefixPath`, `maximumDepth`, `includeHiddenFiles`, `fileNameStartsWith`, `includeDateFrom`, `includeDateTo`, `includeDateType`, `applyOrderIndex`.
 
 Lists all tracked files as a paginated tree of file and directory entries. Defaults to `page = 1` and `perPage = 100`. Pass `prefixPath` to list only files under a folder, and `maximumDepth` to limit how deep the tree goes. Hidden entries (dot-prefixed files and directories) are excluded by default; pass `includeHiddenFiles = true` to include them. Pass `fileNameStartsWith` to narrow the listing to files *and directories* whose leaf name begins with a given prefix, compared case-insensitively (a matched directory brings its whole subtree along). It accepts either a single prefix (a string) or an array of prefixes, in which case an entry matches if its leaf name begins with *any* of them. An empty string, an empty array, or an empty prefix are all rejected with a `400`.
 
 Pass `includeDateFrom` and/or `includeDateTo` (a `Date`, or an RFC 3339 date-time string) to narrow the listing to files whose git date falls in the half-open window `[from, to)` — `from` inclusive, `to` exclusive. Each bound is independently optional; when both are given, `from` must be strictly before `to` (else `400`). `includeDateType` selects which date is compared: `"updated"` (the default, most recent commit touching the file) or `"created"` (oldest commit introducing it under its current path, renames not followed). Beware that, unlike every other listing mode, a date filter cannot be answered from git trees alone: it walks commit history, so its cost scales with history length (`"created"` always walks to the root of history). The filter is only active — and only paid for — when at least one bound is given.
+
+Pass `applyOrderIndex: true` to order every level of the listing by the file order stored for the directory it belongs to (see [Order operations](#order-operations)). Ordered entries come first, in their stored order, with files and directories interleaved freely; everything the stored order does not name follows in the ordinary order (directories first, then alphabetical). It defaults to `false`, and composes with every other option. Beware that this is the only listing mode which reads file contents (one small order index per listed directory).
 
 ```ts
 const list = await client.listFiles("notes", "t_1", {
@@ -163,6 +165,47 @@ await client.moveFile("notes", "t_1", "articles", {
   allowPrefixPathRecurse: true
 });
 ```
+
+### Order operations
+
+A directory may pin the presentation order of its own entries. The order is stored per directory, holds leaf names only (a directory entry carrying a trailing slash, a file none), and may be sparse: entries it does not name simply follow in the ordinary listing order. It is a resource of its own, never a file — it never shows up in `listFiles()`, `countFiles()` or `getFileContent()`, whatever `includeHiddenFiles` says. Pass `applyOrderIndex: true` to `listFiles()` to have it applied.
+
+Every method takes the directory as a repo-relative path, with an empty string (or, on `getFileOrder()`, no argument at all) meaning the repository root.
+
+#### `getFileOrder(collectionId, tenantId, directory?): Promise<FileOrder>`
+
+Reads the file order stored for a directory. Entries come back in the canonical spelling the server stores: directories with a trailing slash, files without. A directory holding no order rejects with a `404` error — not an empty `order` array — so "unordered" and "ordered as nothing" cannot be confused.
+
+```ts
+const order = await client.getFileOrder("notes", "t_1", "articles");
+// { directory: "articles", order: ["intro.md", "getting-started/", "advanced.mdx"] }
+```
+
+#### `writeFileOrder(collectionId, tenantId, directory, payload): Promise<void>`
+
+Replaces a directory's file order, committing the change. The payload holds the `order` entries, the commit `author` and an optional `message`.
+
+`order` must hold at least one entry (an empty order is a `400` — that is what `deleteFileOrder()` is for), and each entry must be a leaf name existing in that directory: a nested path, a duplicate, or a name pointing at nothing all reject with a `400`. A trailing slash marking a directory is accepted and normalized. Writing the order the directory already holds creates no commit.
+
+```ts
+await client.writeFileOrder("notes", "t_1", "articles", {
+  order: ["intro.md", "getting-started/", "advanced.mdx"],
+  author: { name: "Jane Doe", email: "jane@doe.com" },
+  message: "chore: order articles"
+});
+```
+
+#### `deleteFileOrder(collectionId, tenantId, directory, payload): Promise<void>`
+
+Drops a directory's file order, reverting it to the default listing order, committing the change. The payload holds the commit `author` and an optional `message`. A directory holding no order rejects with a `404` error.
+
+```ts
+await client.deleteFileOrder("notes", "t_1", "articles", {
+  author: { name: "Jane Doe", email: "jane@doe.com" }
+});
+```
+
+Note that an order stays honest on its own: deleting or moving a file updates the orders naming it, in the very same commit (a rename within one directory keeps its position, a move out drops it).
 
 ### Commit operations
 

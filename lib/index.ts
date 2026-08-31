@@ -78,6 +78,7 @@ export interface ListFilesOptions {
   includeDateFrom?: string | Date;
   includeDateTo?: string | Date;
   includeDateType?: ListFilesDateType;
+  applyOrderIndex?: boolean;
 }
 
 /**
@@ -136,6 +137,31 @@ export interface FileMovePayload {
   destination: string;
   message?: string;
   allowPrefixPathRecurse?: boolean;
+}
+
+/**
+ * Types for getFileOrder()
+ */
+export interface FileOrder {
+  directory: string;
+  order: Array<string>;
+}
+
+/**
+ * Types for writeFileOrder()
+ */
+export interface FileOrderWritePayload {
+  author: CommitAuthor;
+  order: Array<string>;
+  message?: string;
+}
+
+/**
+ * Types for deleteFileOrder()
+ */
+export interface FileOrderDeletePayload {
+  author: CommitAuthor;
+  message?: string;
 }
 
 /**
@@ -370,7 +396,7 @@ export class GitHTTPFSClient {
   async listFiles(collectionId: string, tenantId: string, options: ListFilesOptions = {}): Promise<FileList> {
     const {
       page = 1, perPage = 100, prefixPath, maximumDepth, includeHiddenFiles, fileNameStartsWith,
-      includeDateFrom, includeDateTo, includeDateType
+      includeDateFrom, includeDateTo, includeDateType, applyOrderIndex
     } = options;
 
     const params = {
@@ -390,7 +416,10 @@ export class GitHTTPFSClient {
       //   serialized, a string is passed verbatim (already RFC 3339)
       include_date_from: toRFC3339(includeDateFrom),
       include_date_to: toRFC3339(includeDateTo),
-      include_date_type: includeDateType
+      include_date_type: includeDateType,
+      // Every level of the listing gets ordered by the file order stored for \
+      //   the directory it belongs to (see getFileOrder())
+      apply_order_index: applyOrderIndex !== undefined ? applyOrderIndex.toString() : undefined
     };
 
     return this.request(
@@ -482,6 +511,46 @@ export class GitHTTPFSClient {
         allow_prefix_path_recurse: allowPrefixPathRecurse
       }
     );
+  }
+
+  // --- Order Operations ---
+
+  /** Read the file order stored for a directory (an empty directory means \
+        the repository root; rejects with a 404 error when that directory \
+        holds no order) */
+  async getFileOrder(collectionId: string, tenantId: string, directory: string = ""): Promise<FileOrder> {
+    return this.request(
+      this.orderPath(collectionId, tenantId, directory), GET
+    );
+  }
+
+  /** Replace the file order of a directory (an empty directory means the \
+        repository root). The payload holds the 'order' entries (leaf names, \
+        which must all exist in that directory), the commit 'author' and an \
+        optional 'message' */
+  async writeFileOrder(collectionId: string, tenantId: string, directory: string, payload: FileOrderWritePayload): Promise<void> {
+    return this.request(
+      this.orderPath(collectionId, tenantId, directory), PUT, payload
+    );
+  }
+
+  /** Drop the file order of a directory, reverting it to the default \
+        listing order (rejects with a 404 error when that directory holds no \
+        order) */
+  async deleteFileOrder(collectionId: string, tenantId: string, directory: string, payload: FileOrderDeletePayload): Promise<void> {
+    return this.request(
+      this.orderPath(collectionId, tenantId, directory), DELETE, payload
+    );
+  }
+
+  /**
+   * Builds an order route path, where the repository root is addressed \
+   *   without any path segment.
+   */
+  private orderPath(collectionId: string, tenantId: string, directory: string): string {
+    const basePath = `${collectionId}/${tenantId}/order`;
+
+    return directory ? `${basePath}/${directory}` : basePath;
   }
 
   // --- Commit Operations ---
