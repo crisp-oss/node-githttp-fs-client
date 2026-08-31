@@ -300,6 +300,41 @@ const batch = await client.batchGetFileContents("notes", "t_1", [
 // { files: [{ path, content }, null, { path, content }] }
 ```
 
+#### `batchReplayHook(collectionId, tenantId, direction, options?): Promise<HookReplay>`
+
+Options: `files`, `prefixPath`, `includeHiddenFiles`, `delayMs`.
+
+Replays file webhooks, so a downstream mirror that drifted out of sync can converge again. Webhook delivery is only durable in memory, so a receiver that was down past its retry budget (or that mis-applied an event) ends up holding a state the server never agreed to. This repairs it **in place**, rather than by wiping and re-pushing everything. Nothing is committed: no commit is created and no file is touched, the call only enqueues hook work.
+
+Pass `files` as the list of paths the **mirror** currently holds — never a list of things to act on. The server intersects it with what it holds itself, and `direction` picks which side of that intersection gets replayed:
+
+| `direction` | Replays | Which files | Repairs |
+|-------------|---------|-------------|---------|
+| `"delete"` | `file.deleted` | Everything **outside** the intersection — the mirror holds them, the server does not | Orphaned rows the mirror kept after a missed deletion |
+| `"create"` | `file.created` | Everything **inside** it — the server holds them, so the mirror should too | Rows the mirror is missing, or whose content went stale |
+
+`files` is optional, and omitting it defaults it to every file the server holds in scope. The two directions then fall out differently: `"create"` covers the whole scope (the common "push everything you have at me" re-sync), while `"delete"` replays nothing at all, since the server cannot be missing what it just listed. Passing an empty array is a `400` — leave the option out instead. Paths are repo-root-relative, must be unique, and must not name an order index (a `400`, since orders are a separate resource that never leaves through the file routes).
+
+Pass `prefixPath` to scope the server-side snapshot to one folder, with the same semantics as `listFiles()`. Paths in `files` stay repo-root-relative, so it acts as a guard rail rather than a join: an entry that does not sit under it is a `400`. `includeHiddenFiles` (default `false`) is only meaningful **when `files` is omitted**, where it shapes the default set exactly as on `listFiles()` — when `files` is given, the snapshot always includes hidden files, or a hidden file would fall outside the intersection and replay a deletion for a file that is still there.
+
+Pass `delayMs` to pause that many milliseconds *between* consecutive deliveries (never after the last one), capped at `60000`. It is a throttle to spare a receiver from a sustained burst, not an ordering device: delivery is already strictly sequential per repository. Its cost is that a replay holds that repository's hook queue for `delayMs × files`, so every commit accepted after it waits behind it — to go slower, replay in several `prefixPath`-scoped passes rather than raising the delay.
+
+The returned `files` is how many files the batch affected, and `commit_sha` is the HEAD the snapshot was computed against (no commit was created). The call returns as soon as the job is enqueued, so it means "scheduled", not "delivered". Replayed payloads carry an extra `"replayed": true` field and keep their ordinary event name, so an existing receiver handler runs again unmodified — which means a `"create"` receiver must treat `file.created` as insert-or-replace rather than a bare insert. The server rejects the call with a `400` when it has no webhook receiver configured at all.
+
+```ts
+// Repair orphans: the mirror holds these three, drop whichever the server does not
+const orphans = await client.batchReplayHook("notes", "t_1", "delete", {
+  files: ["articles/hello.md", "articles/removed.md", "articles/stale.md"]
+});
+// { commit_sha: "a3f9c1d...", files: 2 }
+
+// Full re-sync of one folder, throttled to 10 hooks per second
+const resync = await client.batchReplayHook("notes", "t_1", "create", {
+  prefixPath: "articles/",
+  delayMs: 100
+});
+```
+
 ### Seek options
 
 `getFileContent()` and `batchGetFileContents()` accept an optional `seek` object, which narrows the returned `content` to a line window instead of the whole file. All fields are optional and combinable:

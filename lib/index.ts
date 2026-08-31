@@ -269,6 +269,23 @@ export interface BatchGetFileContentsOptions {
   seek?: FileSeekOptions;
 }
 
+/**
+ * Types for batchReplayHook()
+ */
+export type HookReplayDirection = "delete" | "create";
+
+export interface HookReplay {
+  commit_sha: string;
+  files: number;
+}
+
+export interface BatchReplayHookOptions {
+  files?: Array<string>;
+  prefixPath?: string;
+  includeHiddenFiles?: boolean;
+  delayMs?: number;
+}
+
 /** Defines the API version */
 const VERSION = "v1";
 
@@ -654,6 +671,34 @@ export class GitHTTPFSClient {
       `${collectionId}/${tenantId}/batch/files/read`, POST, {
         files: paths,
         seek
+      }
+    );
+  }
+
+  /** Replay file webhooks, so a downstream mirror that drifted out of sync \
+        can converge again (nothing is committed: this only enqueues hook \
+        work). The 'files' option holds the paths the mirror currently holds, \
+        which the server intersects with what it holds itself, and \
+        'direction' picks which side of that intersection is replayed: \
+        "delete" fires a 'file.deleted' for everything outside it (the \
+        mirror's orphans), "create" a 'file.created' for everything inside it \
+        (rows the mirror is missing, or whose content went stale). Omitting \
+        'files' defaults it to every file the server holds in scope, which \
+        makes "create" a whole-scope re-sync and "delete" a no-op */
+  async batchReplayHook(collectionId: string, tenantId: string, direction: HookReplayDirection, options: BatchReplayHookOptions = {}): Promise<HookReplay> {
+    const { files, prefixPath, includeHiddenFiles, delayMs } = options;
+
+    return this.request(
+      `${collectionId}/${tenantId}/batch/replay/hook`, POST, {
+        direction,
+
+        // Omitted entirely when unset (an empty list is rejected by the \
+        //   server, where omitting defaults to every file it holds)
+        files,
+
+        prefix_path: prefixPath,
+        include_hidden_files: includeHiddenFiles,
+        delay_ms: delayMs
       }
     );
   }
