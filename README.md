@@ -71,13 +71,15 @@ await client.deleteTenant("notes", "t_1");
 
 #### `listFiles(collectionId, tenantId, options?): Promise<FileList>`
 
-Options: `page`, `perPage`, `prefixPath`, `maximumDepth`, `includeHiddenFiles`, `fileNameStartsWith`, `includeDateFrom`, `includeDateTo`, `includeDateType`, `applyOrderIndex`.
+Options: `page`, `perPage`, `prefixPath`, `maximumDepth`, `includeHiddenFiles`, `fileNameStartsWith`, `includeDateFrom`, `includeDateTo`, `includeDateType`, `applyOrderIndex`, `implicitOrderDefaultIndex`.
 
 Lists all tracked files as a paginated tree of file and directory entries. Defaults to `page = 1` and `perPage = 100`. Pass `prefixPath` to list only files under a folder, and `maximumDepth` to limit how deep the tree goes. Hidden entries (dot-prefixed files and directories) are excluded by default; pass `includeHiddenFiles = true` to include them. Pass `fileNameStartsWith` to narrow the listing to files *and directories* whose leaf name begins with a given prefix, compared case-insensitively (a matched directory brings its whole subtree along). It accepts either a single prefix (a string) or an array of prefixes, in which case an entry matches if its leaf name begins with *any* of them. An empty string, an empty array, or an empty prefix are all rejected with a `400`.
 
 Pass `includeDateFrom` and/or `includeDateTo` (a `Date`, or an RFC 3339 date-time string) to narrow the listing to files whose git date falls in the half-open window `[from, to)` — `from` inclusive, `to` exclusive. Each bound is independently optional; when both are given, `from` must be strictly before `to` (else `400`). `includeDateType` selects which date is compared: `"updated"` (the default, most recent commit touching the file) or `"created"` (oldest commit introducing it under its current path, renames not followed). Beware that, unlike every other listing mode, a date filter cannot be answered from git trees alone: it walks commit history, so its cost scales with history length (`"created"` always walks to the root of history). The filter is only active — and only paid for — when at least one bound is given.
 
 Pass `applyOrderIndex: true` to order every level of the listing by the file order stored for the directory it belongs to (see [Order operations](#order-operations)). Ordered entries come first, in their stored order, with files and directories interleaved freely; everything the stored order does not name follows in the ordinary order (directories first, then alphabetical). It defaults to `false`, and composes with every other option. Beware that this is the only listing mode which reads file contents (one small order index per listed directory).
+
+Pass `implicitOrderDefaultIndex` (a number, unset by default) to choose where those unnamed entries land instead: it is the position they are all treated as holding, so `0` (or any negative value, e.g. `-1`) lifts every unordered entry *above* the whole stored order, while `2` slots them between its second and third entries. Unordered entries keep their ordinary relative order among themselves either way, and a directory holding no order at all is left untouched. It is only read when `applyOrderIndex` is `true`.
 
 ```ts
 const list = await client.listFiles("notes", "t_1", {
@@ -92,13 +94,15 @@ const recent = await client.listFiles("notes", "t_1", {
 });
 ```
 
-#### `getFileContent(collectionId, tenantId, path, seek?): Promise<FileContent>`
+#### `getFileContent(collectionId, tenantId, path, seek?): Promise<FileContentPositioned>`
 
 Reads the content of a file. An optional `seek` object narrows `content` to a line window (see [Seek options](#seek-options)).
 
+The returned `position` is the zero-based position the file holds in the file order of its parent directory (see [Order operations](#order-operations)), so one read is enough to place a file among its siblings. It is `ORDER_POSITION_UNLISTED` (`-1`) when that order does not name the file, or when the directory holds no order at all — which is also the value `reorderFile()` takes to drop a file from an order, so what is read back can be sent back.
+
 ```ts
 const file = await client.getFileContent("notes", "t_1", "articles/hello.md");
-// { path: "articles/hello.md", content: "..." }
+// { path: "articles/hello.md", content: "...", position: 2 }
 ```
 
 #### `fileExists(collectionId, tenantId, path, options?): Promise<boolean>`
@@ -166,11 +170,45 @@ await client.moveFile("notes", "t_1", "articles", {
 });
 ```
 
+#### `reorderFile(collectionId, tenantId, path, payload): Promise<void>`
+
+Moves a single file to the payload's numerical `position` in the file order of its parent directory, committing the change. The payload also holds the commit `author` and an optional `message`. Where `writeFileOrder()` replaces a whole directory's order at once, this is the incremental spelling: the file is dropped from wherever it currently sits and re-inserted at `position`, shifting the entries at and after it down by one.
+
+`position` is zero-based, so `0` puts the file first, and it counts against the *other* entries of the order. Since an order may be sparse, a position past its end is clamped to its tail rather than rejected. A directory holding no order yet gets one naming just this file — unlike the implicit upkeep that only ever edits an existing order, asking for a position is explicit. Reordering a file to the position it already holds creates no commit.
+
+```ts
+await client.reorderFile("notes", "t_1", "articles/hello.md", {
+  position: 0,
+  author: { name: "Jane Doe", email: "jane@doe.com" }
+});
+```
+
+Pass `position: ORDER_POSITION_UNLISTED` (`-1`, the only accepted negative value, and the value `getFileContent()` reports for an unordered file) for the inverse operation: the file is dropped from the order and left implicitly ordered again, the file itself untouched. When it was the order's last entry, the order is dropped entirely.
+
+```ts
+import { ORDER_POSITION_UNLISTED } from "githttp-fs-client";
+
+await client.reorderFile("notes", "t_1", "articles/hello.md", {
+  position: ORDER_POSITION_UNLISTED,
+  author: { name: "Jane Doe", email: "jane@doe.com" }
+});
+```
+
+Set `allowPrefixPath: true` to let the path name a directory instead, positioning **that directory itself** among its siblings (an order interleaves files and directories freely). Nothing recurses — hence no `_recurse` suffix, unlike on `deleteFile()` and `moveFile()`: the directory's contents are untouched, and orders stored inside it keep ordering their own directory. Like its siblings the flag only permits: a path resolving to a file behaves identically with it on, while a directory path without it is simply "not a file" and rejects with a `404`.
+
+```ts
+await client.reorderFile("notes", "t_1", "articles/getting-started", {
+  position: 1,
+  author: { name: "Jane Doe", email: "jane@doe.com" },
+  allowPrefixPath: true
+});
+```
+
 ### Order operations
 
 A directory may pin the presentation order of its own entries. The order is stored per directory, holds leaf names only (a directory entry carrying a trailing slash, a file none), and may be sparse: entries it does not name simply follow in the ordinary listing order. It is a resource of its own, never a file — it never shows up in `listFiles()`, `countFiles()` or `getFileContent()`, whatever `includeHiddenFiles` says. Pass `applyOrderIndex: true` to `listFiles()` to have it applied.
 
-Every method takes the directory as a repo-relative path, with an empty string (or, on `getFileOrder()`, no argument at all) meaning the repository root.
+Every method takes the directory as a repo-relative path, with an empty string (or, on `getFileOrder()`, no argument at all) meaning the repository root. These methods address a whole directory's order at once; to move a single entry within one, see [`reorderFile()`](#reorderfilecollectionid-tenantid-path-payload-promisevoid).
 
 #### `getFileOrder(collectionId, tenantId, directory?): Promise<FileOrder>`
 
@@ -251,7 +289,7 @@ await client.rollbackCommit("notes", "t_1", "9b924c1d...", {
 
 #### `batchGetFileContents(collectionId, tenantId, paths, seek?): Promise<FileContentBatch>`
 
-Reads several files in one request. The returned `files` array is index-aligned with `paths`: each slot is either a `{ path, content }` object, or `null` when that path does not exist. An optional `seek` object applies the same line window to every file (see [Seek options](#seek-options)). Each entry of `paths` is either a bare path string, or a `{ path, seek? }` object whose `seek` replaces the shared one for that file (no field-by-field merge).
+Reads several files in one request. The returned `files` array is index-aligned with `paths`: each slot is either a `{ path, content }` object, or `null` when that path does not exist. An optional `seek` object applies the same line window to every file (see [Seek options](#seek-options)). Each entry of `paths` is either a bare path string, or a `{ path, seek? }` object whose `seek` replaces the shared one for that file (no field-by-field merge). Unlike `getFileContent()`, the slots carry no `position`: a batch spans arbitrary directories, so ordering information would cost one order read per distinct parent — when order matters, `listFiles()` with `applyOrderIndex: true` answers it for a whole tree in one pass.
 
 ```ts
 const batch = await client.batchGetFileContents("notes", "t_1", [

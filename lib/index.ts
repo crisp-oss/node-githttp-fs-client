@@ -79,6 +79,7 @@ export interface ListFilesOptions {
   includeDateTo?: string | Date;
   includeDateType?: ListFilesDateType;
   applyOrderIndex?: boolean;
+  implicitOrderDefaultIndex?: number;
 }
 
 /**
@@ -89,6 +90,10 @@ export interface FileContent {
   path: string;
 }
 
+export interface FileContentPositioned extends FileContent {
+  position: number;
+}
+
 export interface GetFileContentOptions {
   seek?: FileSeekOptions;
 }
@@ -97,6 +102,14 @@ export interface GetFileContentOptions {
  * Types for seek options (getFileContent() and batchGetFileContents())
  */
 export const SEEK_TO_FROM_LINE_STARTS_WITH = "$seek_from_line_starts_with";
+
+/**
+ * Position of an entry that the file order index of its parent directory does \
+ *   not name (or whose directory holds no order at all). Reported by \
+ *   getFileContent(), and accepted by reorderFile() to drop an entry from the \
+ *   index again.
+ */
+export const ORDER_POSITION_UNLISTED = -1;
 
 export interface FileSeekOptions {
   from_line_starts_with?: Array<string>;
@@ -137,6 +150,16 @@ export interface FileMovePayload {
   destination: string;
   message?: string;
   allowPrefixPathRecurse?: boolean;
+}
+
+/**
+ * Types for reorderFile()
+ */
+export interface FileReorderPayload {
+  author: CommitAuthor;
+  position: number;
+  message?: string;
+  allowPrefixPath?: boolean;
 }
 
 /**
@@ -396,7 +419,7 @@ export class GitHTTPFSClient {
   async listFiles(collectionId: string, tenantId: string, options: ListFilesOptions = {}): Promise<FileList> {
     const {
       page = 1, perPage = 100, prefixPath, maximumDepth, includeHiddenFiles, fileNameStartsWith,
-      includeDateFrom, includeDateTo, includeDateType, applyOrderIndex
+      includeDateFrom, includeDateTo, includeDateType, applyOrderIndex, implicitOrderDefaultIndex
     } = options;
 
     const params = {
@@ -419,7 +442,13 @@ export class GitHTTPFSClient {
       include_date_type: includeDateType,
       // Every level of the listing gets ordered by the file order stored for \
       //   the directory it belongs to (see getFileOrder())
-      apply_order_index: applyOrderIndex !== undefined ? applyOrderIndex.toString() : undefined
+      apply_order_index: applyOrderIndex !== undefined ? applyOrderIndex.toString() : undefined,
+      // Entries that no file order names are treated as holding this index, \
+      //   which lifts them out of the tail they land in by default (only read \
+      //   when the order index is applied)
+      implicit_order_default_index: implicitOrderDefaultIndex !== undefined
+        ? implicitOrderDefaultIndex.toString()
+        : undefined
     };
 
     return this.request(
@@ -427,8 +456,9 @@ export class GitHTTPFSClient {
     );
   }
 
-  /** Read file content (optionally narrowed to a line window with seek) */
-  async getFileContent(collectionId: string, tenantId: string, path: string, options: GetFileContentOptions = {}): Promise<FileContent> {
+  /** Read file content, plus the position the file holds in the file order of \
+        its parent directory (optionally narrowed to a line window with seek) */
+  async getFileContent(collectionId: string, tenantId: string, path: string, options: GetFileContentOptions = {}): Promise<FileContentPositioned> {
     const { seek } = options;
 
     // Prefix lists travel as JSON-array strings in query parameters, \
@@ -509,6 +539,25 @@ export class GitHTTPFSClient {
         ...basePayload,
 
         allow_prefix_path_recurse: allowPrefixPathRecurse
+      }
+    );
+  }
+
+  /** Give the file the numerical 'position' from the payload in the file order \
+        of its parent directory, shifting the entries at and after it down by \
+        one (a position past the end of the order is clamped to its tail, and \
+        ORDER_POSITION_UNLISTED drops the file from the order instead, leaving \
+        the file itself alone). With 'allowPrefixPath' enabled in the payload, \
+        the path may name a directory, which gets positioned among its \
+        siblings */
+  async reorderFile(collectionId: string, tenantId: string, path: string, payload: FileReorderPayload): Promise<void> {
+    const { allowPrefixPath, ...basePayload } = payload;
+
+    return this.request(
+      `${collectionId}/${tenantId}/files/${path}/reorder`, POST, {
+        ...basePayload,
+
+        allow_prefix_path: allowPrefixPath
       }
     );
   }

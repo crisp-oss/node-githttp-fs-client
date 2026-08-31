@@ -5,7 +5,7 @@
  * Author: Valerian Saliou <valerian@valeriansaliou.name>
  */
 
-import { GitHTTPFSClient } from "../lib/index.ts";
+import { GitHTTPFSClient, ORDER_POSITION_UNLISTED } from "../lib/index.ts";
 
 const client = new GitHTTPFSClient({
   baseUrl: "http://localhost:5355",
@@ -60,9 +60,10 @@ try {
 
   console.log("Got file order:", order);
 
-  // List files, ordered by the stored file orders
+  // List files, ordered by the stored file orders (unordered entries on top)
   const orderedFiles = await client.listFiles(COLLECTION_ID, TENANT_ID, {
-    applyOrderIndex: true
+    applyOrderIndex: true,
+    implicitOrderDefaultIndex: 0
   });
 
   console.log("Listed ordered files:", orderedFiles);
@@ -73,6 +74,24 @@ try {
   });
 
   console.log("Deleted file order for: hello-world", deleteOrderResult);
+
+  // Pin the example file to the first position of its file order (which \
+  //   creates the order of its directory again, holding just this file)
+  const reorderResult = await client.reorderFile(COLLECTION_ID, TENANT_ID, FILE_PATH, {
+    position: 0,
+    author: AUTHOR,
+    message: "chore: reorder example file"
+  });
+
+  console.log("Reordered file: " + FILE_PATH, reorderResult);
+
+  // Pull the example file out of its file order again (the file itself stays)
+  const unorderResult = await client.reorderFile(COLLECTION_ID, TENANT_ID, FILE_PATH, {
+    position: ORDER_POSITION_UNLISTED,
+    author: AUTHOR
+  });
+
+  console.log("Unordered file: " + FILE_PATH, unorderResult);
 
   // List commits for tenant
   const commits = await client.listCommits(COLLECTION_ID, TENANT_ID, { page: 1, perPage: 3 });
