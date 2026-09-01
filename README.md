@@ -174,16 +174,19 @@ await client.moveFile("notes", "t_1", "articles", {
 
 Moves a single file to the payload's numerical `position` in the file order of its parent directory, committing the change. The payload also holds the commit `author` and an optional `message`. Where `writeFileOrder()` replaces a whole directory's order at once, this is the incremental spelling: the file is dropped from wherever it currently sits and re-inserted at `position`, shifting the entries at and after it down by one.
 
-`position` is zero-based, so `0` puts the file first, and it counts against the *other* entries of the order. Since an order may be sparse, a position past its end is clamped to its tail rather than rejected. A directory holding no order yet gets one naming just this file — unlike the implicit upkeep that only ever edits an existing order, asking for a position is explicit. Reordering a file to the position it already holds creates no commit.
+`position` is zero-based, so `0` puts the file first, and it counts against the *whole parent directory* rather than against the entries the order happens to name: the order is materialized over every entry the directory holds before the move, so `position` means the row the caller was looking at. A position past the end is clamped to the tail rather than rejected. A directory holding no order yet gets one covering it — unlike the implicit upkeep that only ever edits an existing order, asking for a position is explicit, so the first reorder in a directory pins all of its entries, which is what makes the next one land where the caller expects. A request whose result matches the stored order creates no commit.
+
+Pass `implicitOrderDefaultIndex` (a number, unset by default) to say where the siblings the order does not name yet are folded in when it is materialized. It is the same number, with the same meaning, as [the `listFiles()` option of that name](#listfilescollectionid-tenantid-options-promisefilelist): unset leaves them behind everything the order names, `0` (or any negative value) lifts them above it, `2` slots them between its second and third entries. A caller reordering inside a rendered listing passes back whatever it rendered with, and the order it gets is the sequence it was showing. It is inert with `position: ORDER_POSITION_UNLISTED`, which materializes nothing.
 
 ```ts
 await client.reorderFile("notes", "t_1", "articles/hello.md", {
   position: 0,
+  implicitOrderDefaultIndex: 0,
   author: { name: "Jane Doe", email: "jane@doe.com" }
 });
 ```
 
-Pass `position: ORDER_POSITION_UNLISTED` (`-1`, the only accepted negative value, and the value `getFileContent()` reports for an unordered file) for the inverse operation: the file is dropped from the order and left implicitly ordered again, the file itself untouched. When it was the order's last entry, the order is dropped entirely.
+Pass `position: ORDER_POSITION_UNLISTED` (`-1`, the only accepted negative value, and the value `getFileContent()` reports for an unordered file) for the inverse operation: the file is dropped from the order and left implicitly ordered again, the file itself untouched, and the order is *not* materialized (unpinning one entry is no reason to pin every other one). When it was the order's last entry, the order is dropped entirely.
 
 ```ts
 import { ORDER_POSITION_UNLISTED } from "githttp-fs-client";

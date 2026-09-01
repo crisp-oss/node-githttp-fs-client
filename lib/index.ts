@@ -158,6 +158,7 @@ export interface FileMovePayload {
 export interface FileReorderPayload {
   author: CommitAuthor;
   position: number;
+  implicitOrderDefaultIndex?: number;
   message?: string;
   allowPrefixPath?: boolean;
 }
@@ -564,16 +565,21 @@ export class GitHTTPFSClient {
         of its parent directory, shifting the entries at and after it down by \
         one (a position past the end of the order is clamped to its tail, and \
         ORDER_POSITION_UNLISTED drops the file from the order instead, leaving \
-        the file itself alone). With 'allowPrefixPath' enabled in the payload, \
-        the path may name a directory, which gets positioned among its \
-        siblings */
+        the file itself alone). The order is first materialized over every \
+        entry the directory holds, so the position counts against what the \
+        caller sees, with 'implicitOrderDefaultIndex' saying where the \
+        not-yet-ordered siblings are folded in (same meaning as on \
+        listFiles(), and inert with ORDER_POSITION_UNLISTED). With \
+        'allowPrefixPath' enabled in the payload, the path may name a \
+        directory, which gets positioned among its siblings */
   async reorderFile(collectionId: string, tenantId: string, path: string, payload: FileReorderPayload): Promise<void> {
-    const { allowPrefixPath, ...basePayload } = payload;
+    const { allowPrefixPath, implicitOrderDefaultIndex, ...basePayload } = payload;
 
     return this.request(
       `${collectionId}/${tenantId}/files/${path}/reorder`, POST, {
         ...basePayload,
 
+        implicit_order_default_index: implicitOrderDefaultIndex,
         allow_prefix_path: allowPrefixPath
       }
     );

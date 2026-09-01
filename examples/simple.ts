@@ -76,9 +76,11 @@ try {
   console.log("Deleted file order for: hello-world", deleteOrderResult);
 
   // Pin the example file to the first position of its file order (which \
-  //   creates the order of its directory again, holding just this file)
+  //   creates the order of its directory again, materialized over all of its \
+  //   entries, with the not-yet-ordered ones folded in on top)
   const reorderResult = await client.reorderFile(COLLECTION_ID, TENANT_ID, FILE_PATH, {
     position: 0,
+    implicitOrderDefaultIndex: 0,
     author: AUTHOR,
     message: "chore: reorder example file"
   });
