@@ -159,6 +159,7 @@ export interface FileReorderPayload {
   author: CommitAuthor;
   position: number;
   implicitOrderDefaultIndex?: number;
+  implicitAllowHiddenFiles?: boolean;
   message?: string;
   allowPrefixPath?: boolean;
 }
@@ -178,6 +179,7 @@ export interface FileOrderWritePayload {
   author: CommitAuthor;
   order: Array<string>;
   message?: string;
+  allowHiddenFiles?: boolean;
 }
 
 /**
@@ -569,17 +571,23 @@ export class GitHTTPFSClient {
         entry the directory holds, so the position counts against what the \
         caller sees, with 'implicitOrderDefaultIndex' saying where the \
         not-yet-ordered siblings are folded in (same meaning as on \
-        listFiles(), and inert with ORDER_POSITION_UNLISTED). With \
-        'allowPrefixPath' enabled in the payload, the path may name a \
-        directory, which gets positioned among its siblings */
+        listFiles(), and inert with ORDER_POSITION_UNLISTED) and \
+        'implicitAllowHiddenFiles' deciding whether hidden siblings are \
+        folded in at all (defaults to false, and required when the positioned \
+        entry is itself hidden). With 'allowPrefixPath' enabled in the \
+        payload, the path may name a directory, which gets positioned among \
+        its siblings */
   async reorderFile(collectionId: string, tenantId: string, path: string, payload: FileReorderPayload): Promise<void> {
-    const { allowPrefixPath, implicitOrderDefaultIndex, ...basePayload } = payload;
+    const {
+      allowPrefixPath, implicitOrderDefaultIndex, implicitAllowHiddenFiles, ...basePayload
+    } = payload;
 
     return this.request(
       `${collectionId}/${tenantId}/files/${path}/reorder`, POST, {
         ...basePayload,
 
         implicit_order_default_index: implicitOrderDefaultIndex,
+        implicit_allow_hidden_files: implicitAllowHiddenFiles,
         allow_prefix_path: allowPrefixPath
       }
     );
@@ -599,10 +607,17 @@ export class GitHTTPFSClient {
   /** Replace the file order of a directory (an empty directory means the \
         repository root). The payload holds the 'order' entries (leaf names, \
         which must all exist in that directory), the commit 'author' and an \
-        optional 'message' */
+        optional 'message'. A hidden (dot-prefixed) entry is rejected unless \
+        'allowHiddenFiles' is enabled in the payload */
   async writeFileOrder(collectionId: string, tenantId: string, directory: string, payload: FileOrderWritePayload): Promise<void> {
+    const { allowHiddenFiles, ...basePayload } = payload;
+
     return this.request(
-      this.orderPath(collectionId, tenantId, directory), PUT, payload
+      this.orderPath(collectionId, tenantId, directory), PUT, {
+        ...basePayload,
+
+        allow_hidden_files: allowHiddenFiles
+      }
     );
   }
 

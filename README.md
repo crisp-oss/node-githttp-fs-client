@@ -178,6 +178,8 @@ Moves a single file to the payload's numerical `position` in the file order of i
 
 Pass `implicitOrderDefaultIndex` (a number, unset by default) to say where the siblings the order does not name yet are folded in when it is materialized. It is the same number, with the same meaning, as [the `listFiles()` option of that name](#listfilescollectionid-tenantid-options-promisefilelist): unset leaves them behind everything the order names, `0` (or any negative value) lifts them above it, `2` slots them between its second and third entries. A caller reordering inside a rendered listing passes back whatever it rendered with, and the order it gets is the sequence it was showing. It is inert with `position: ORDER_POSITION_UNLISTED`, which materializes nothing.
 
+Pass `implicitAllowHiddenFiles: true` to fold hidden (dot-prefixed) siblings into the materialized order as well. It defaults to `false`, which keeps them out — the same judgement `includeHiddenFiles: false` makes on a listing, and the right default for an order the server generates from a directory rather than one the caller dictates entry by entry. A hidden entry the order *already* names is kept regardless: it was pinned deliberately, and positioning an unrelated file is no occasion to unpin it. The flag is **required** (as `true`, else a `400`) when the file being positioned is itself hidden, since pinning a dot-file has to be asked for. Like `implicitOrderDefaultIndex` it is inert with `position: ORDER_POSITION_UNLISTED`, which materializes nothing and only ever unpins — so a hidden entry pinned earlier can always be dropped without the flag.
+
 ```ts
 await client.reorderFile("notes", "t_1", "articles/hello.md", {
   position: 0,
@@ -211,6 +213,8 @@ await client.reorderFile("notes", "t_1", "articles/getting-started", {
 
 A directory may pin the presentation order of its own entries. The order is stored per directory, holds leaf names only (a directory entry carrying a trailing slash, a file none), and may be sparse: entries it does not name simply follow in the ordinary listing order. It is a resource of its own, never a file — it never shows up in `listFiles()`, `countFiles()` or `getFileContent()`, whatever `includeHiddenFiles` says. Pass `applyOrderIndex: true` to `listFiles()` to have it applied.
 
+Hidden (dot-prefixed) entries stay out of an order unless asked for, since an order is a presentation order and a dot-file is by convention not presented: `writeFileOrder()` rejects one without `allowHiddenFiles: true`, and `reorderFile()` leaves hidden siblings out of the order it materializes without `implicitAllowHiddenFiles: true`. Neither traps them: an order that already names a hidden entry keeps it, and `reorderFile()` can always unpin one.
+
 Every method takes the directory as a repo-relative path, with an empty string (or, on `getFileOrder()`, no argument at all) meaning the repository root. These methods address a whole directory's order at once; to move a single entry within one, see [`reorderFile()`](#reorderfilecollectionid-tenantid-path-payload-promisevoid).
 
 #### `getFileOrder(collectionId, tenantId, directory?): Promise<FileOrder>`
@@ -228,9 +232,12 @@ Replaces a directory's file order, committing the change. The payload holds the 
 
 `order` must hold at least one entry (an empty order is a `400` — that is what `deleteFileOrder()` is for), and each entry must be a leaf name existing in that directory: a nested path, a duplicate, or a name pointing at nothing all reject with a `400`. A trailing slash marking a directory is accepted and normalized. Writing the order the directory already holds creates no commit.
 
+A hidden (dot-prefixed) entry rejects with a `400` unless the payload sets `allowHiddenFiles: true`: an order is a presentation order, and a dot-file is by convention not presented, so pinning one has to be asked for. It rejects rather than being silently dropped — the caller sent that name and that position, and storing a different order than the one they wrote would be worse than the error. With the flag on, hidden entries are ordinary entries, subject to every other rule unchanged.
+
 ```ts
 await client.writeFileOrder("notes", "t_1", "articles", {
   order: ["intro.md", "getting-started/", "advanced.mdx"],
+  allowHiddenFiles: false,
   author: { name: "Jane Doe", email: "jane@doe.com" },
   message: "chore: order articles"
 });
