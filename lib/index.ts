@@ -23,30 +23,40 @@ export interface CommitAuthor {
 
 /**
  * Types shared by sendPing() and getReplicationStatus()
+ *
+ * Note: every timestamp on this API is an RFC 3339 date-time in UTC (eg. \
+ *   "2026-06-16T10:00:00Z"), the same spelling as 'committed_at' on the \
+ *   commit routes. Pass one through 'new Date(...)' to get a Date back.
  */
 export type ReplicaState = "ready" | "bootstrapping";
 
 /**
- * How a replica sees its own following. Reported by the replica itself, since \
- *   it is the only node that can know how far behind its disk is.
+ * Whether a replica is keeping up, and whether it will on its own: \
+ *   "synced" (the last pass succeeded, nothing pending or locked), \
+ *   "lagging" (work pending, but passes are landing), "stalled" (several \
+ *   passes in a row failed) or "halted" (something needs an operator, see \
+ *   the 'issues' of getReplicationStatus()). Alert on "halted", warn on \
+ *   "stalled".
  */
-export interface ReplicaFollower {
-  state: ReplicaState;
-  stream_connected: boolean;
-  last_reconcile_at: number | null;
-  pending_repositories: number;
-  reclones: number;
-}
+export type ReplicaSyncStatus = "synced" | "lagging" | "stalled" | "halted";
 
 /**
  * Types for sendPing()
  */
+export interface PingReplica {
+  state: ReplicaState;
+  sync: ReplicaSyncStatus;
+  stream_connected: boolean;
+  last_reconcile_at: string | null;
+  pending_repositories: number;
+}
+
 export interface PingResult {
   pong: boolean;
 
   // Only present when the answering node is a read-only replica (a master \
   //   and a standalone server answer with 'pong' alone)
-  replica?: ReplicaFollower;
+  replica?: PingReplica;
 }
 
 /**
@@ -65,13 +75,15 @@ export interface HealthStatus {
   version: string;
   role: ReplicationRole;
   writable: boolean;
-  started_at: number;
+  started_at: string;
   uptime_secs: number;
 }
 
 /**
  * Types for getReplicationStatus()
  */
+export type ReplicationNodeStatus = "healthy" | "degraded" | "halted";
+
 export interface ReplicationNode {
   node_id: string;
   role: ReplicationRole;
@@ -87,44 +99,133 @@ export interface ReplicationMaster {
   node_id: string | null;
   url: string | null;
   reachable: boolean;
-  last_contact_at: number | null;
+  last_contact_at: string | null;
   last_error: string | null;
 }
 
 /**
  * One replica, as the master sees it. The field names say who witnessed \
  *   what: 'stream_connected', 'connected_at', 'last_contact_at' and \
- *   'packs_delivered' are facts the master observed, while 'repositories' \
- *   and 'pending_repositories' are numbers the replica volunteered as of \
- *   'reported_at'.
+ *   'packs_delivered' are facts the master observed, while 'repositories', \
+ *   'pending_repositories' and 'sync' are what the replica volunteered as \
+ *   of 'reported_at'.
  */
 export interface ReplicationReplica {
   node_id: string;
   stream_connected: boolean;
-  connected_at: number | null;
-  last_contact_at: number | null;
+  connected_at: string | null;
+  last_contact_at: string | null;
   packs_delivered: number;
   repositories: number | null;
   pending_repositories: number | null;
-  reported_at: number | null;
+  sync: ReplicaSyncStatus | null;
+  reported_at: string | null;
 }
+
+/**
+ * How a replica sees its own following. Reported by the replica itself, since \
+ *   it is the only node that can know how far behind its disk is.
+ */
+export interface ReplicationFollower {
+  state: ReplicaState;
+  sync: ReplicaSyncStatus;
+  stream_connected: boolean;
+  last_reconcile_at: string | null;
+  last_success_at: string | null;
+  pending_repositories: number;
+
+  // Repositories this replica holds but refuses to sync until an operator \
+  //   looks at them (one 'replica_ahead' or 'history_diverged' issue each)
+  locked_repositories: number;
+
+  consecutive_failures: number;
+}
+
+/**
+ * Something a node stopped doing on its own and is waiting on an operator \
+ *   for. Tagged with 'kind' so an alert can match on it, and stamped with \
+ *   'since' so a fresh problem is distinguishable from one ignored for a \
+ *   week.
+ */
+export interface ReplicationIssueRepository {
+  // The replica holds more history than its master announced \
+  //   ('replica_ahead'), or neither head descends from the other \
+  //   ('history_diverged'). The local copy is kept and still served, and \
+  //   that one repository stops syncing until an operator decides
+  kind: "replica_ahead" | "history_diverged";
+  collection_id: string;
+  tenant_id: string;
+  local: string;
+  remote: string;
+  since: string;
+}
+
+export interface ReplicationIssueIdentityMismatch {
+  // The master states a data-set identity other than the one this replica \
+  //   pinned: it is following the wrong set, so nothing is pulled
+  kind: "identity_mismatch";
+  pinned: string;
+  stated: string;
+  since: string;
+}
+
+export interface ReplicationIssueDeletionRefused {
+  // Applying the master's listing would delete more than half of what this \
+  //   replica holds, so the deletions were refused (updates keep flowing)
+  kind: "deletion_refused";
+  would_delete: number;
+  held: number;
+  since: string;
+}
+
+export interface ReplicationIssueIdentityFile {
+  // This node's own '.replication.json' went missing or changed under it, \
+  //   so its listing is served as incomplete and no follower infers \
+  //   deletions from it
+  kind: "identity_file_missing" | "identity_file_changed";
+  path: string;
+  expected?: string;
+  found?: string;
+  since: string;
+}
+
+export interface ReplicationIssueNodeIdCollision {
+  // Two processes present the same 'node_id' (on a master: the second \
+  //   stream was refused; on a replica: its own stream is being refused)
+  kind: "node_id_collision";
+  node_id: string;
+  since: string;
+}
+
+export type ReplicationIssue =
+  ReplicationIssueRepository |
+  ReplicationIssueIdentityMismatch |
+  ReplicationIssueDeletionRefused |
+  ReplicationIssueIdentityFile |
+  ReplicationIssueNodeIdCollision;
 
 export interface ReplicationStatus {
   protocol: number;
+
+  // The one field to alert on, present on every role. A master folds in \
+  //   what its replicas report, so one probe against it covers the set
+  status: ReplicationNodeStatus;
+
+  issues: Array<ReplicationIssue>;
+
   node: ReplicationNode;
   master: ReplicationMaster;
   replicas: Array<ReplicationReplica>;
 
-  // Only present when the answering node is a replica (same shape as the \
-  //   'replica' field of sendPing())
-  replica?: ReplicaFollower;
+  // Only present when the answering node is a replica
+  replica?: ReplicationFollower;
 
-  observed_at: number;
+  observed_at: string;
 
   // When 'replicas' was last true: the answer time on a master, and the last \
   //   time the master said so on a replica (null when a replica never \
   //   reached its master)
-  replicas_observed_at: number | null;
+  replicas_observed_at: string | null;
 }
 
 /**

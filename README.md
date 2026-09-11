@@ -35,13 +35,15 @@ console.log("Listed files:", files);
 
 All methods are asynchronous and reject with an `Error` carrying the HTTP status code when the server returns a non-success response.
 
+Every timestamp returned by the API is an **RFC 3339 date-time in UTC** (eg. `"2026-06-16T10:00:00Z"`), whatever the route — `committed_at` on the commit routes, and every `*_at` field on the health ones. Pass one through `new Date(...)` when a `Date` is what you need.
+
 ### Base operations
 
 #### `sendPing(): Promise<PingResult>`
 
 Pings the server, to check that it is reachable and that the API key is valid.
 
-A master and a standalone server answer with `pong` alone. A **read-only replica** also carries a `replica` object describing its own following: `state` (`"ready"` once it holds content worth serving, else `"bootstrapping"`), `stream_connected` (whether its live notification stream to the master is up, where `false` only means it is converging on its poll interval instead), `last_reconcile_at` (unix timestamp of its last whole-repository-set comparison, `null` before the first pass), `pending_repositories`, and `reclones` (how many times it discarded a local repository and cloned it afresh, because its history no longer descended from the master's). That is what lets a client failing over between nodes tell a node that is current from one that is still bootstrapping or cut off from its master.
+A master and a standalone server answer with `pong` alone. A **read-only replica** also carries a `replica` object describing its own following: `state` (`"ready"` once it holds content worth serving, else `"bootstrapping"`), `sync` (one word on whether it is keeping up: `"synced"`, `"lagging"`, `"stalled"` or `"halted"`), `stream_connected` (whether its live notification stream to the master is up, where `false` only means it is converging on its poll interval instead), `last_reconcile_at` (when it last compared its whole repository set against the master, `null` before the first pass) and `pending_repositories`. That is what lets a client failing over between nodes tell a node that is current from one that is still bootstrapping or cut off from its master.
 
 Unlike the health routes below, this one **is** authenticated, which is what makes it the probe to use to verify an API key.
 
@@ -50,7 +52,16 @@ const pong = await client.sendPing();
 // { pong: true }
 
 // On a replica:
-// { pong: true, replica: { state: "ready", stream_connected: true, last_reconcile_at: 1757548800, pending_repositories: 0, reclones: 0 } }
+// {
+//   pong: true,
+//   replica: {
+//     state: "ready",
+//     sync: "synced",
+//     stream_connected: true,
+//     last_reconcile_at: "2026-06-16T10:00:00Z",
+//     pending_repositories: 0
+//   }
+// }
 ```
 
 ### Health operations
@@ -59,7 +70,7 @@ The two health routes below are the **only unauthenticated routes on the API**: 
 
 #### `getHealthStatus(): Promise<HealthStatus>`
 
-Reads what this process is, in the smallest honest terms: `status` (`"healthy"`, or `"bootstrapping"` on a replica that holds no content yet), the `name` and `version` of the build running, its `role` (`"master"`, `"replica"` or `"standalone"`), whether it is `writable`, and `started_at` / `uptime_secs`.
+Reads what this process is, in the smallest honest terms: `status` (`"healthy"`, or `"bootstrapping"` on a replica that holds no content yet), the `name` and `version` of the build running, its `role` (`"master"`, `"replica"` or `"standalone"`), whether it is `writable`, and `started_at` (RFC 3339) with the `uptime_secs` since.
 
 It is free of I/O — every field is read from the config or from memory — so an anonymous caller cannot make the node do work by asking, and it may be polled at whatever interval a monitor likes. It always answers `200`, including while a replica is bootstrapping: the status code says the process is alive enough to answer, and the body says what it can serve. Read `writable` to pick the node to send writes to, instead of discovering it from a rejection.
 
@@ -68,10 +79,10 @@ const health = await client.getHealthStatus();
 // {
 //   status: "healthy",
 //   name: "githttp-fs",
-//   version: "1.6.0",
+//   version: "1.10.2",
 //   role: "master",
 //   writable: true,
-//   started_at: 1757548800,
+//   started_at: "2026-06-16T10:00:00Z",
 //   uptime_secs: 3600
 // }
 ```
@@ -80,10 +91,12 @@ const health = await client.getHealthStatus();
 
 Reads the replication picture as the server sees it. Every node answers it, whatever its role — including one with no replication configured at all, which reports `role: "standalone"` — so a single probe works against a whole deployment without the caller knowing which node is which.
 
+- `status` — **the one field to alert on**, present on every role: `"healthy"`, `"degraded"` (converging on its own) or `"halted"` (something needs a human). A master folds in what its replicas report, so one probe against the master covers the set.
+- `issues` — what is halted, and why. Each entry is tagged with a `kind` (`"replica_ahead"`, `"history_diverged"`, `"identity_mismatch"`, `"deletion_refused"`, `"identity_file_missing"`, `"identity_file_changed"`, `"node_id_collision"`), carries the fields that kind needs, and is stamped `since`, so a fresh problem is distinguishable from one ignored for a week. Empty unless `status` is `"halted"`. The type is a discriminated union, so switching on `kind` narrows the rest.
 - `node` — the answering node: its `node_id`, its `role`, the data-set `identity` it serves (`null` on a standalone node, and on a replica that has not paired yet), and how many `repositories` it holds right now.
 - `master` — the write node of the set, as far as the answering node knows: `node_id`, the `url` it follows (`null` on the master itself and on a standalone node), whether it is `reachable`, `last_contact_at`, and `last_error` when the last attempt failed.
-- `replicas` — every replica known to follow the master. Each row separates what the master *observed* (`stream_connected`, `connected_at`, `last_contact_at`, `packs_delivered`) from what the replica *reported* (`repositories`, `pending_repositories`, as of `reported_at`) — only a replica can know how far behind it is. Rows are kept after a replica disconnects, flagged `stream_connected: false`.
-- `replica` — present on a replica only, and identical to the `replica` field of `sendPing()`.
+- `replicas` — every replica known to follow the master. Each row separates what the master *observed* (`stream_connected`, `connected_at`, `last_contact_at`, `packs_delivered`) from what the replica *reported* (`repositories`, `pending_repositories`, `sync`, as of `reported_at`) — only a replica can know how far behind it is. Rows are kept after a replica disconnects, flagged `stream_connected: false`.
+- `replica` — present on a replica only, and a superset of the `replica` field of `sendPing()`: it adds `last_success_at` (when a pass last ended with nothing failed), `locked_repositories` (held and served, but not synced, pending an operator — one `issues` entry each) and `consecutive_failures`.
 - `observed_at` and `replicas_observed_at` — when this answer was built, and when `replicas` was last true. They match on a master (it watches those connections itself); on a replica, `replicas_observed_at` is when the master last said so, so a roster served while the master is down reads as visibly stale rather than quietly wrong (`null` when the replica never reached its master).
 
 This body names peer node ids and the master's URL, so it describes a deployment's topology to anyone who can reach the port. None of it is a credential, but an operator who treats internal hostnames as sensitive should keep the port off the public internet.
@@ -92,13 +105,37 @@ This body names peer node ids and the master's URL, so it describes a deployment
 const replication = await client.getReplicationStatus();
 // {
 //   protocol: 1,
+//   status: "healthy",
+//   issues: [],
 //   node: { node_id: "replica-eu", role: "replica", identity: "b0c1...", repositories: 128 },
-//   master: { node_id: "master-1", url: "http://master-1:5356", reachable: true, last_contact_at: 1757548800, last_error: null },
-//   replicas: [{ node_id: "replica-eu", stream_connected: true, packs_delivered: 42, ... }],
-//   replica: { state: "ready", stream_connected: true, last_reconcile_at: 1757548800, pending_repositories: 0, reclones: 0 },
-//   observed_at: 1757548860,
-//   replicas_observed_at: 1757548800
+//   master: {
+//     node_id: "master-1",
+//     url: "http://master-1:5356",
+//     reachable: true,
+//     last_contact_at: "2026-06-16T10:03:09Z",
+//     last_error: null
+//   },
+//   replicas: [{ node_id: "replica-eu", stream_connected: true, packs_delivered: 42, sync: "synced", ... }],
+//   replica: {
+//     state: "ready",
+//     sync: "synced",
+//     stream_connected: true,
+//     last_reconcile_at: "2026-06-16T10:03:09Z",
+//     last_success_at: "2026-06-16T10:03:09Z",
+//     pending_repositories: 0,
+//     locked_repositories: 0,
+//     consecutive_failures: 0
+//   },
+//   observed_at: "2026-06-16T10:03:19Z",
+//   replicas_observed_at: "2026-06-16T10:03:09Z"
 // }
+
+// Alerting, in one field:
+if (replication.status === "halted") {
+  for (const issue of replication.issues) {
+    console.error(`githttp-fs needs an operator: ${issue.kind} since ${issue.since}`);
+  }
+}
 ```
 
 Note that **writes sent to a replica reject with a `423` error** — a replica is not a server missing those endpoints, it is the wrong node for them, and it will still be the wrong node once it has caught up, so the answer carries no retry hint: send the write to the master instead. A replica that holds no content at all (still bootstrapping) separately refuses *reads* with a `503` and a `Retry-After` header, since an empty repository is not stale but wrong. `sendPing()` and both health routes stay answerable throughout, so a node refusing everything else can still explain itself.
