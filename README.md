@@ -41,10 +41,67 @@ All methods are asynchronous and reject with an `Error` carrying the HTTP status
 
 Pings the server, to check that it is reachable and that the API key is valid.
 
+A master and a standalone server answer with `pong` alone. A **read-only replica** also carries a `replica` object describing its own following: `state` (`"ready"` once it holds content worth serving, else `"bootstrapping"`), `stream_connected` (whether its live notification stream to the master is up, where `false` only means it is converging on its poll interval instead), `last_reconcile_at` (unix timestamp of its last whole-repository-set comparison, `null` before the first pass), `pending_repositories`, and `reclones` (how many times it discarded a local repository and cloned it afresh, because its history no longer descended from the master's). That is what lets a client failing over between nodes tell a node that is current from one that is still bootstrapping or cut off from its master.
+
+Unlike the health routes below, this one **is** authenticated, which is what makes it the probe to use to verify an API key.
+
 ```ts
 const pong = await client.sendPing();
 // { pong: true }
+
+// On a replica:
+// { pong: true, replica: { state: "ready", stream_connected: true, last_reconcile_at: 1757548800, pending_repositories: 0, reclones: 0 } }
 ```
+
+### Health operations
+
+The two health routes below are the **only unauthenticated routes on the API**: this client sends them no API key at all. They exist to answer questions asked before a credential is held, or when the credential is exactly what is in doubt — a load balancer picking a node, a rollout probe, a dashboard covering a whole deployment — so requiring the key there would turn a health probe into a secret-distribution problem. Neither opens a repository or names a tenant. Use `sendPing()`, not these, to verify that an API key works.
+
+#### `getHealthStatus(): Promise<HealthStatus>`
+
+Reads what this process is, in the smallest honest terms: `status` (`"healthy"`, or `"bootstrapping"` on a replica that holds no content yet), the `name` and `version` of the build running, its `role` (`"master"`, `"replica"` or `"standalone"`), whether it is `writable`, and `started_at` / `uptime_secs`.
+
+It is free of I/O — every field is read from the config or from memory — so an anonymous caller cannot make the node do work by asking, and it may be polled at whatever interval a monitor likes. It always answers `200`, including while a replica is bootstrapping: the status code says the process is alive enough to answer, and the body says what it can serve. Read `writable` to pick the node to send writes to, instead of discovering it from a rejection.
+
+```ts
+const health = await client.getHealthStatus();
+// {
+//   status: "healthy",
+//   name: "githttp-fs",
+//   version: "1.6.0",
+//   role: "master",
+//   writable: true,
+//   started_at: 1757548800,
+//   uptime_secs: 3600
+// }
+```
+
+#### `getReplicationStatus(): Promise<ReplicationStatus>`
+
+Reads the replication picture as the server sees it. Every node answers it, whatever its role — including one with no replication configured at all, which reports `role: "standalone"` — so a single probe works against a whole deployment without the caller knowing which node is which.
+
+- `node` — the answering node: its `node_id`, its `role`, the data-set `identity` it serves (`null` on a standalone node, and on a replica that has not paired yet), and how many `repositories` it holds right now.
+- `master` — the write node of the set, as far as the answering node knows: `node_id`, the `url` it follows (`null` on the master itself and on a standalone node), whether it is `reachable`, `last_contact_at`, and `last_error` when the last attempt failed.
+- `replicas` — every replica known to follow the master. Each row separates what the master *observed* (`stream_connected`, `connected_at`, `last_contact_at`, `packs_delivered`) from what the replica *reported* (`repositories`, `pending_repositories`, as of `reported_at`) — only a replica can know how far behind it is. Rows are kept after a replica disconnects, flagged `stream_connected: false`.
+- `replica` — present on a replica only, and identical to the `replica` field of `sendPing()`.
+- `observed_at` and `replicas_observed_at` — when this answer was built, and when `replicas` was last true. They match on a master (it watches those connections itself); on a replica, `replicas_observed_at` is when the master last said so, so a roster served while the master is down reads as visibly stale rather than quietly wrong (`null` when the replica never reached its master).
+
+This body names peer node ids and the master's URL, so it describes a deployment's topology to anyone who can reach the port. None of it is a credential, but an operator who treats internal hostnames as sensitive should keep the port off the public internet.
+
+```ts
+const replication = await client.getReplicationStatus();
+// {
+//   protocol: 1,
+//   node: { node_id: "replica-eu", role: "replica", identity: "b0c1...", repositories: 128 },
+//   master: { node_id: "master-1", url: "http://master-1:5356", reachable: true, last_contact_at: 1757548800, last_error: null },
+//   replicas: [{ node_id: "replica-eu", stream_connected: true, packs_delivered: 42, ... }],
+//   replica: { state: "ready", stream_connected: true, last_reconcile_at: 1757548800, pending_repositories: 0, reclones: 0 },
+//   observed_at: 1757548860,
+//   replicas_observed_at: 1757548800
+// }
+```
+
+Note that **writes sent to a replica reject with a `423` error** — a replica is not a server missing those endpoints, it is the wrong node for them, and it will still be the wrong node once it has caught up, so the answer carries no retry hint: send the write to the master instead. A replica that holds no content at all (still bootstrapping) separately refuses *reads* with a `503` and a `Retry-After` header, since an empty repository is not stale but wrong. `sendPing()` and both health routes stay answerable throughout, so a node refusing everything else can still explain itself.
 
 ### Count operations
 

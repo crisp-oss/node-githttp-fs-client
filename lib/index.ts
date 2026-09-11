@@ -22,10 +22,109 @@ export interface CommitAuthor {
 }
 
 /**
+ * Types shared by sendPing() and getReplicationStatus()
+ */
+export type ReplicaState = "ready" | "bootstrapping";
+
+/**
+ * How a replica sees its own following. Reported by the replica itself, since \
+ *   it is the only node that can know how far behind its disk is.
+ */
+export interface ReplicaFollower {
+  state: ReplicaState;
+  stream_connected: boolean;
+  last_reconcile_at: number | null;
+  pending_repositories: number;
+  reclones: number;
+}
+
+/**
  * Types for sendPing()
  */
 export interface PingResult {
   pong: boolean;
+
+  // Only present when the answering node is a read-only replica (a master \
+  //   and a standalone server answer with 'pong' alone)
+  replica?: ReplicaFollower;
+}
+
+/**
+ * Types shared by getHealthStatus() and getReplicationStatus()
+ */
+export type ReplicationRole = "master" | "replica" | "standalone";
+
+/**
+ * Types for getHealthStatus()
+ */
+export type HealthState = "healthy" | "bootstrapping";
+
+export interface HealthStatus {
+  status: HealthState;
+  name: string;
+  version: string;
+  role: ReplicationRole;
+  writable: boolean;
+  started_at: number;
+  uptime_secs: number;
+}
+
+/**
+ * Types for getReplicationStatus()
+ */
+export interface ReplicationNode {
+  node_id: string;
+  role: ReplicationRole;
+
+  // The data-set identity this node serves (null on a standalone node, and \
+  //   on a replica that has not paired with its master yet)
+  identity: string | null;
+
+  repositories: number;
+}
+
+export interface ReplicationMaster {
+  node_id: string | null;
+  url: string | null;
+  reachable: boolean;
+  last_contact_at: number | null;
+  last_error: string | null;
+}
+
+/**
+ * One replica, as the master sees it. The field names say who witnessed \
+ *   what: 'stream_connected', 'connected_at', 'last_contact_at' and \
+ *   'packs_delivered' are facts the master observed, while 'repositories' \
+ *   and 'pending_repositories' are numbers the replica volunteered as of \
+ *   'reported_at'.
+ */
+export interface ReplicationReplica {
+  node_id: string;
+  stream_connected: boolean;
+  connected_at: number | null;
+  last_contact_at: number | null;
+  packs_delivered: number;
+  repositories: number | null;
+  pending_repositories: number | null;
+  reported_at: number | null;
+}
+
+export interface ReplicationStatus {
+  protocol: number;
+  node: ReplicationNode;
+  master: ReplicationMaster;
+  replicas: Array<ReplicationReplica>;
+
+  // Only present when the answering node is a replica (same shape as the \
+  //   'replica' field of sendPing())
+  replica?: ReplicaFollower;
+
+  observed_at: number;
+
+  // When 'replicas' was last true: the answer time on a master, and the last \
+  //   time the master said so on a replica (null when a replica never \
+  //   reached its master)
+  replicas_observed_at: number | null;
 }
 
 /**
@@ -317,15 +416,23 @@ function toRFC3339(date?: string | Date): string | undefined {
 export class GitHTTPFSClient {
   private baseUrl: string;
   private headers: Record<string, string>;
+  private headersPublic: Record<string, string>;
 
   constructor(config: ClientConfig) {
     // Remove trailing slash (if any)
     this.baseUrl = config.baseUrl.replace(/\/$/, "");
 
-    this.headers = {
-      "Authorization": `Bearer ${config.apiKey}`,
+    // The health routes take no credential, so they get headers of their own, \
+    //   holding no API key (see getHealthStatus())
+    this.headersPublic = {
       "Content-Type": "application/json",
       "Accept": "application/json"
+    };
+
+    this.headers = {
+      "Authorization": `Bearer ${config.apiKey}`,
+
+      ...this.headersPublic
     };
   }
 
@@ -336,7 +443,8 @@ export class GitHTTPFSClient {
     path: string = "",
     method: "HEAD" | "GET" | "POST" | "PUT" | "DELETE" = GET,
     payload?: any,
-    params?: Record<string, string|undefined>
+    params?: Record<string, string|undefined>,
+    unauthenticated: boolean = false
   ): Promise<T> {
     const url = new URL(
       `${this.baseUrl}/${VERSION}` + (path ? `/${path}` : "")
@@ -354,7 +462,9 @@ export class GitHTTPFSClient {
     const options: RequestInit = {
       method,
 
-      headers: this.headers
+      // Unauthenticated routes are sent no API key at all, rather than one \
+      //   the server would ignore
+      headers: unauthenticated ? this.headersPublic : this.headers
     };
 
     if (payload) {
@@ -400,9 +510,41 @@ export class GitHTTPFSClient {
 
   // --- Base Operations ---
 
-  /** Ping server */
+  /** Ping server (a read-only replica also reports its own follower state in \
+        the 'replica' field, which is how a client failing over between nodes \
+        tells a node that is current from one still bootstrapping or cut off \
+        from its master) */
   async sendPing(): Promise<PingResult> {
     return this.request();
+  }
+
+  // --- Health Operations ---
+
+  // Note: the health routes are the only unauthenticated routes on the API, \
+  //   so no API key is sent to them (they answer questions asked before a \
+  //   credential is held, or when the credential is exactly what is in \
+  //   doubt). Use sendPing() to verify an API key, never these.
+
+  /** Read what this process is: its build, the role it plays in a replicated \
+        set, whether it accepts writes, and how long it has been up. Needs no \
+        authentication, and touches no repository, so it stays answerable at \
+        any polling interval — and answers on a replica that is still \
+        bootstrapping, which is the state it exists to report */
+  async getHealthStatus(): Promise<HealthStatus> {
+    return this.request(
+      "_health/status", GET, undefined, undefined, true
+    );
+  }
+
+  /** Read the replication picture as the server sees it: its own role, the \
+        reachability of the master, and every replica known to follow it. \
+        Answered by every node, including a standalone one (as \
+        'role: "standalone"'), so a single probe covers a whole deployment. \
+        Needs no authentication */
+  async getReplicationStatus(): Promise<ReplicationStatus> {
+    return this.request(
+      "_health/replication", GET, undefined, undefined, true
+    );
   }
 
   // --- Count Operations ---
