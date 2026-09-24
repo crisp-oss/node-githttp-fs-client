@@ -275,6 +275,7 @@ export interface ListFilesOptions {
   maximumDepth?: number;
   includeHiddenFiles?: boolean;
   fileNameStartsWith?: string | Array<string>;
+  filePaths?: string | Array<string>;
   includeDateFrom?: string | Date;
   includeDateTo?: string | Date;
   includeDateType?: ListFilesDateType;
@@ -682,7 +683,7 @@ export class GitHTTPFSClient {
   async listFiles(collectionId: string, tenantId: string, options: ListFilesOptions = {}): Promise<FileList> {
     const {
       page = 1, perPage = 100, prefixPath, maximumDepth, includeHiddenFiles, fileNameStartsWith,
-      includeDateFrom, includeDateTo, includeDateType, applyOrderIndex, implicitOrderDefaultIndex
+      filePaths, includeDateFrom, includeDateTo, includeDateType, applyOrderIndex, implicitOrderDefaultIndex
     } = options;
 
     const params = {
@@ -697,6 +698,13 @@ export class GitHTTPFSClient {
         ? (Array.isArray(fileNameStartsWith)
           ? JSON.stringify(fileNameStartsWith)
           : fileNameStartsWith)
+        : undefined,
+      // Exact paths to select (relative to the prefix path), with the same \
+      //   wire spelling as the name prefixes
+      file_paths: (filePaths !== undefined)
+        ? (Array.isArray(filePaths)
+          ? JSON.stringify(filePaths)
+          : filePaths)
         : undefined,
       // Date bounds travel as RFC 3339 date-times; a Date object is \
       //   serialized, a string is passed verbatim (already RFC 3339)
