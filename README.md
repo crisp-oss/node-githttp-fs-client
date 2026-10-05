@@ -173,6 +173,8 @@ Pass `includeDateFrom` and/or `includeDateTo` (a `Date`, or an RFC 3339 date-tim
 
 Pass `applyOrderIndex: true` to order every level of the listing by the file order stored for the directory it belongs to (see [Order operations](#order-operations)). Ordered entries come first, in their stored order, with files and directories interleaved freely; everything the stored order does not name follows in the ordinary order (directories first, then alphabetical). It defaults to `false`, and composes with every other option. Beware that this is the only listing mode which reads file contents (one small order index per listed directory).
 
+When `applyOrderIndex` is enabled, every listed entry includes `position`: its zero-based position in the stored order, or `ORDER_POSITION_UNLISTED` (`-1`) when the order does not name it. The field is omitted otherwise.
+
 Pass `implicitOrderDefaultIndex` (a number, unset by default) to choose where those unnamed entries land instead: it is the position they are all treated as holding, so `0` (or any negative value, e.g. `-1`) lifts every unordered entry *above* the whole stored order, while `2` slots them between its second and third entries. Unordered entries keep their ordinary relative order among themselves either way, and a directory holding no order at all is left untouched. It is only read when `applyOrderIndex` is `true`.
 
 ```ts

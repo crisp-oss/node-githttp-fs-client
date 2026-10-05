@@ -248,12 +248,14 @@ export interface CountFilesOptions {
  */
 export interface FileListEntityFile {
   name: string;
+  position?: number;
   type: "file";
 }
 
 export interface FileListEntityDirectory {
   name: string;
   children: Array<FileListFile>;
+  position?: number;
   type: "directory";
 }
 
