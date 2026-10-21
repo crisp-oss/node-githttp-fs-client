@@ -492,6 +492,285 @@ export interface BatchReplayHookOptions {
   delayMs?: number;
 }
 
+/**
+ * Error types
+ *
+ * Note: every method rejects with a 'GitHTTPFSError' (or one of its \
+ *   subclasses, one per HTTP status family), so a caller can pick what it \
+ *   considers normal (eg. a missing file) from what it considers abnormal \
+ *   (eg. a server failure) with either 'instanceof' or the finer 'code'.
+ */
+export type GitHTTPFSErrorCode =
+  // 404
+  "file_not_found" |
+  "commit_not_found" |
+  "order_not_found" |
+  "tenant_not_found" |
+  "not_found" |
+
+  // 400
+  "invalid_tenant" |
+  "invalid_path" |
+  "invalid_operation" |
+  "bad_request" |
+
+  // 401
+  "unauthorized" |
+
+  // 422
+  "invalid_utf8" |
+  "unprocessable" |
+
+  // 423
+  "read_only_replica" |
+
+  // 503
+  "replica_bootstrapping" |
+  "unavailable" |
+
+  // 5xx
+  "git_error" |
+  "io_error" |
+  "task_failed" |
+  "server_error" |
+
+  // No response at all (eg. connection refused, DNS failure)
+  "network_error" |
+
+  // Any other status
+  "unknown";
+
+export interface GitHTTPFSErrorDetails {
+  code: GitHTTPFSErrorCode;
+  method: string;
+  url: string;
+  status?: number | null;
+  serverMessage?: string | null;
+  detail?: string | null;
+  retryAfter?: number | null;
+  cause?: unknown;
+}
+
+/**
+ * Base error for everything the client rejects with.
+ */
+export class GitHTTPFSError extends Error {
+  override name = "GitHTTPFSError";
+
+  /** Machine-readable error kind (stable, safe to switch on) */
+  readonly code: GitHTTPFSErrorCode;
+
+  /** HTTP status code ('null' when no response was received) */
+  readonly status: number | null;
+
+  /** HTTP method of the failed request */
+  readonly method: string;
+
+  /** Full URL of the failed request */
+  readonly url: string;
+
+  /** Raw error message as sent by the server ('null' when none) */
+  readonly serverMessage: string | null;
+
+  /** Subject of the error when the server names one, ie. the file path, \
+        commit SHA, directory or tenant ID that was not found or invalid \
+        ('null' otherwise) */
+  readonly detail: string | null;
+
+  /** Seconds to wait before retrying, from the 'Retry-After' header \
+        ('null' when absent) */
+  readonly retryAfter: number | null;
+
+  constructor(message: string, details: GitHTTPFSErrorDetails) {
+    super(message, { cause: details.cause });
+
+    this.code = details.code;
+    this.status = details.status ?? null;
+    this.method = details.method;
+    this.url = details.url;
+    this.serverMessage = details.serverMessage ?? null;
+    this.detail = details.detail ?? null;
+    this.retryAfter = details.retryAfter ?? null;
+  }
+}
+
+/** The server could not be reached, or the connection dropped */
+export class GitHTTPFSNetworkError extends GitHTTPFSError {
+  override name = "GitHTTPFSNetworkError";
+}
+
+/** 400: the request was invalid (bad tenant ID, path or operation) */
+export class GitHTTPFSBadRequestError extends GitHTTPFSError {
+  override name = "GitHTTPFSBadRequestError";
+}
+
+/** 401: the API key is missing or invalid */
+export class GitHTTPFSUnauthorizedError extends GitHTTPFSError {
+  override name = "GitHTTPFSUnauthorizedError";
+}
+
+/** 404: the file, commit, order index or tenant does not exist */
+export class GitHTTPFSNotFoundError extends GitHTTPFSError {
+  override name = "GitHTTPFSNotFoundError";
+}
+
+/** 422: the stored content cannot be served (eg. not valid UTF-8) */
+export class GitHTTPFSUnprocessableError extends GitHTTPFSError {
+  override name = "GitHTTPFSUnprocessableError";
+}
+
+/** 423: a write was sent to a read-only replica (send it to the master) */
+export class GitHTTPFSReadOnlyError extends GitHTTPFSError {
+  override name = "GitHTTPFSReadOnlyError";
+}
+
+/** 5xx: the server failed */
+export class GitHTTPFSServerError extends GitHTTPFSError {
+  override name = "GitHTTPFSServerError";
+}
+
+/** 503: the node cannot serve yet (eg. a bootstrapping replica), retry \
+      after 'retryAfter' seconds */
+export class GitHTTPFSUnavailableError extends GitHTTPFSServerError {
+  override name = "GitHTTPFSUnavailableError";
+}
+
+/**
+ * Tells whether an error was raised by this client, optionally narrowed to \
+ *   one or more error codes (works even when 'instanceof' does not, eg. with \
+ *   several copies of this package installed).
+ */
+export function isGitHTTPFSError(
+  error: unknown, code?: GitHTTPFSErrorCode | Array<GitHTTPFSErrorCode>
+): error is GitHTTPFSError {
+  const isClientError = (
+    error instanceof GitHTTPFSError ||
+
+    (
+      error instanceof Error &&
+        error.name.startsWith("GitHTTPFS") &&
+        typeof (error as GitHTTPFSError).code === "string"
+    )
+  );
+
+  if (!isClientError || code === undefined) {
+    return isClientError;
+  }
+
+  const codes = Array.isArray(code) ? code : [code];
+
+  return codes.includes((error as GitHTTPFSError).code);
+}
+
+/**
+ * Maps the server error message prefixes to their error code (these mirror \
+ *   the server 'AppError' variants and middleware refusals).
+ */
+const ERROR_MESSAGE_PREFIXES: Array<[string, GitHTTPFSErrorCode]> = [
+  ["file not found:", "file_not_found"],
+  ["commit not found:", "commit_not_found"],
+  ["order index not found for directory:", "order_not_found"],
+  ["tenant not found:", "tenant_not_found"],
+  ["invalid tenant id:", "invalid_tenant"],
+  ["invalid path:", "invalid_path"],
+  ["invalid operation:", "invalid_operation"],
+  ["file content is not valid UTF-8 at path:", "invalid_utf8"],
+  ["git error:", "git_error"],
+  ["io error:", "io_error"],
+  ["background task failed:", "task_failed"],
+  ["this node is a read-only replica", "read_only_replica"],
+  ["replica is bootstrapping", "replica_bootstrapping"]
+];
+
+/**
+ * Resolves the error code for a status, when no message prefix matched.
+ */
+function errorCodeForStatus(status: number): GitHTTPFSErrorCode {
+  switch (status) {
+    case 400: {
+      return "bad_request";
+    }
+
+    case 401: {
+      return "unauthorized";
+    }
+
+    case 404: {
+      return "not_found";
+    }
+
+    case 422: {
+      return "unprocessable";
+    }
+
+    case 423: {
+      return "read_only_replica";
+    }
+
+    case 503: {
+      return "unavailable";
+    }
+
+    default: {
+      return (status >= 500) ? "server_error" : "unknown";
+    }
+  }
+}
+
+/**
+ * Picks the error class for a status.
+ */
+function errorClassForStatus(status: number): typeof GitHTTPFSError {
+  switch (status) {
+    case 400: {
+      return GitHTTPFSBadRequestError;
+    }
+
+    case 401: {
+      return GitHTTPFSUnauthorizedError;
+    }
+
+    case 404: {
+      return GitHTTPFSNotFoundError;
+    }
+
+    case 422: {
+      return GitHTTPFSUnprocessableError;
+    }
+
+    case 423: {
+      return GitHTTPFSReadOnlyError;
+    }
+
+    case 503: {
+      return GitHTTPFSUnavailableError;
+    }
+
+    default: {
+      return (status >= 500) ? GitHTTPFSServerError : GitHTTPFSError;
+    }
+  }
+}
+
+/**
+ * Parses a 'Retry-After' header (delay in seconds, or HTTP date) to seconds.
+ */
+function parseRetryAfter(value: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const seconds = Number(value);
+
+  if (Number.isFinite(seconds)) {
+    return Math.max(0, seconds);
+  }
+
+  const date = Date.parse(value);
+
+  return Number.isNaN(date) ? null : Math.max(0, Math.ceil((date - Date.now()) / 1000));
+}
+
 /** Defines the API version */
 const VERSION = "v1";
 
@@ -575,27 +854,23 @@ export class GitHTTPFSClient {
       options.body = JSON.stringify(payload);
     }
 
-    const response = await fetch(url.toString(), options);
+    let response: Response;
+
+    try {
+      response = await fetch(url.toString(), options);
+    } catch (error) {
+      const reason = (error instanceof Error) ? error.message : String(error);
+
+      throw new GitHTTPFSNetworkError(`githttp-fs [network]: ${reason}`, {
+        code: "network_error",
+        method,
+        url: url.toString(),
+        cause: error
+      });
+    }
 
     if (!response.ok) {
-      const errorText = method !== HEAD ? await response.text() : "";
-
-      // Error bodies may be JSON ({ error }) or plain text, depending on \
-      //   where the server failed
-      let errorMessage;
-
-      try {
-        errorMessage = JSON.parse(errorText)?.error;
-      } catch {
-        errorMessage = errorText;
-      }
-
-      const error = new Error(`githttp-fs [${response.status}]: ${errorMessage || "<unknown>"}`);
-
-      // @ts-ignore
-      error.__statusCode = response.status;
-
-      throw error;
+      throw await this.errorFromResponse(response, method, url.toString());
     }
 
     if (method === HEAD) {
@@ -610,6 +885,71 @@ export class GitHTTPFSClient {
     }
 
     return JSON.parse(bodyText);
+  }
+
+  /**
+   * Builds the typed error for a non-success response.
+   */
+  private async errorFromResponse(
+    response: Response, method: string, url: string
+  ): Promise<GitHTTPFSError> {
+    let errorText = "";
+
+    if (method !== HEAD) {
+      try {
+        errorText = await response.text();
+      } catch {
+        // The body could not be read (the status alone is still meaningful)
+      }
+    }
+
+    // Error bodies may be JSON ({ error }) or plain text, depending on \
+    //   where the server failed
+    let serverMessage: string | null = null;
+
+    try {
+      const errorBody = JSON.parse(errorText)?.error;
+
+      serverMessage = (typeof errorBody === "string") ? errorBody : null;
+    } catch {
+      serverMessage = errorText.trim() || null;
+    }
+
+    let code = errorCodeForStatus(response.status);
+    let detail: string | null = null;
+
+    if (serverMessage) {
+      const match = ERROR_MESSAGE_PREFIXES.find(([prefix]) => {
+        return serverMessage!.startsWith(prefix);
+      });
+
+      if (match) {
+        const [prefix, prefixCode] = match;
+
+        code = prefixCode;
+
+        // Only prefixes ending with a colon carry a subject after them
+        if (prefix.endsWith(":")) {
+          detail = serverMessage.slice(prefix.length).trim() || null;
+        }
+      }
+    }
+
+    const ErrorClass = errorClassForStatus(response.status);
+
+    return new ErrorClass(
+      `githttp-fs [${response.status}]: ${serverMessage || "<unknown>"}`,
+
+      {
+        code,
+        method,
+        url,
+        status: response.status,
+        serverMessage,
+        detail,
+        retryAfter: parseRetryAfter(response.headers.get("Retry-After"))
+      }
+    );
   }
 
   // --- Base Operations ---
@@ -770,8 +1110,7 @@ export class GitHTTPFSClient {
 
       return true;
     } catch (error) {
-      // @ts-ignore
-      if (error instanceof Error && error.__statusCode === 404) {
+      if (error instanceof GitHTTPFSNotFoundError) {
         return false;
       }
 

@@ -33,7 +33,7 @@ console.log("Listed files:", files);
 
 ## Available methods
 
-All methods are asynchronous and reject with an `Error` carrying the HTTP status code when the server returns a non-success response.
+All methods are asynchronous and reject with a typed `GitHTTPFSError` when the server returns a non-success response, or cannot be reached at all (see [Error handling](#error-handling)).
 
 Every timestamp returned by the API is an **RFC 3339 date-time in UTC** (eg. `"2026-06-16T10:00:00Z"`), whatever the route — `committed_at` on the commit routes, and every `*_at` field on the health ones. Pass one through `new Date(...)` when a `Date` is what you need.
 
@@ -462,6 +462,64 @@ const frontMatter = await client.getFileContent("notes", "t_1", "articles/hello.
 const previews = await client.batchGetFileContents("notes", "t_1", paths, {
   lines_maximum: 10
 });
+```
+
+## Error handling
+
+Every method rejects with a `GitHTTPFSError`, or one of its subclasses, so you can decide what counts as *normal* for your use case (eg. a missing file) versus *abnormal* (eg. a server failure).
+
+| Class | Status | `code` values |
+| --- | --- | --- |
+| `GitHTTPFSBadRequestError` | `400` | `invalid_tenant`, `invalid_path`, `invalid_operation`, `bad_request` |
+| `GitHTTPFSUnauthorizedError` | `401` | `unauthorized` |
+| `GitHTTPFSNotFoundError` | `404` | `file_not_found`, `commit_not_found`, `order_not_found`, `tenant_not_found`, `not_found` |
+| `GitHTTPFSUnprocessableError` | `422` | `invalid_utf8`, `unprocessable` |
+| `GitHTTPFSReadOnlyError` | `423` | `read_only_replica` |
+| `GitHTTPFSUnavailableError` (extends `GitHTTPFSServerError`) | `503` | `replica_bootstrapping`, `unavailable` |
+| `GitHTTPFSServerError` | `5xx` | `git_error`, `io_error`, `task_failed`, `server_error` |
+| `GitHTTPFSNetworkError` | — | `network_error` (no response received, the original error is kept as `cause`) |
+| `GitHTTPFSError` | other | `unknown` |
+
+Every error carries:
+
+- `code` — a stable, machine-readable error kind (see above). The generic codes (`not_found`, `bad_request`, …) are used when the server does not say more, eg. on `HEAD` requests, which have no body.
+- `status` — the HTTP status code (`null` on a network error).
+- `serverMessage` — the raw message sent by the server (`null` when none).
+- `detail` — the subject of the error when the server names one: the file path, commit SHA, directory or tenant ID that was not found or invalid, or the reason for an invalid path or operation (`null` otherwise).
+- `retryAfter` — seconds to wait before retrying, from the `Retry-After` header (eg. on a bootstrapping replica), `null` when absent.
+- `method` and `url` — the request that failed.
+
+```ts
+import { GitHTTPFSNotFoundError, GitHTTPFSUnavailableError } from "githttp-fs-client";
+
+try {
+  const file = await client.getFileContent("notes", "t_1", "articles/hello.md");
+} catch (error) {
+  if (error instanceof GitHTTPFSNotFoundError) {
+    // Normal: the file (or the whole tenant) does not exist yet
+    console.log(`Not found (${error.code}): ${error.detail}`);
+  } else if (error instanceof GitHTTPFSUnavailableError) {
+    // Transient: retry later
+    console.log(`Retry in ${error.retryAfter ?? 5}s`);
+  } else {
+    // Abnormal: let it bubble up
+    throw error;
+  }
+}
+```
+
+The `isGitHTTPFSError()` type guard does the same based on codes, and also works when `instanceof` does not (eg. with several copies of this package installed):
+
+```ts
+import { isGitHTTPFSError } from "githttp-fs-client";
+
+try {
+  await client.getFileOrder("notes", "t_1", "articles");
+} catch (error) {
+  if (!isGitHTTPFSError(error, ["order_not_found", "tenant_not_found"])) {
+    throw error;
+  }
+}
 ```
 
 ## What is Git HTTP FS?
